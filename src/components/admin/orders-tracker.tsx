@@ -228,13 +228,16 @@ export default function OrdersTracker() {
         return
       }
 
-      if (currentOrder.status === newStatus) {
+      const currentStatus = currentOrder.status || currentOrder.order_status || 'pending'
+
+      if (currentStatus === newStatus) {
         console.log('⚠️ Status already set to:', newStatus)
         return // No change needed
       }
 
       // Map status to action
       const actionMap: { [key: string]: string } = {
+        'pending': 'mark_pending', // Note: This action doesn't exist in API, but we handle it
         'processing': 'mark_processing',
         'shipped': 'mark_shipped',
         'delivered': 'mark_delivered',
@@ -245,6 +248,29 @@ export default function OrdersTracker() {
       const action = actionMap[newStatus]
       if (!action) {
         console.error('❌ Invalid status:', newStatus)
+        return
+      }
+
+      // Validate status transitions on frontend before API call
+      const validTransitions: Record<string, string[]> = {
+        'pending': ['processing', 'shipped', 'delivered', 'cancelled'],
+        'processing': ['shipped', 'delivered', 'cancelled'],
+        'shipped': ['delivered', 'returned'],
+        'delivered': ['returned'],
+        'cancelled': [], // Cannot change from cancelled
+        'returned': ['processing'] // Can only reprocess returned orders
+      }
+
+      if (!validTransitions[currentStatus]?.includes(newStatus)) {
+        console.error(`❌ Invalid status transition: Cannot change from '${currentStatus}' to '${newStatus}'`)
+        alert(`Cannot change order status from '${currentStatus}' to '${newStatus}'. This transition is not allowed.`)
+        return
+      }
+
+      // Special handling for pending status - this is not a real API action
+      if (newStatus === 'pending') {
+        console.log('⚠️ Cannot set status back to pending - this is not supported')
+        alert('Cannot set order status back to pending. Please choose a different status.')
         return
       }
 
@@ -380,8 +406,35 @@ export default function OrdersTracker() {
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900">Orders & Shipment Tracker</h1>
-        <p className="text-gray-600">Track customer orders from processing to delivery with real-time status updates</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Orders & Shipment Tracker</h1>
+            <p className="text-gray-600">Track customer orders from processing to delivery with real-time status updates</p>
+          </div>
+          <Button
+            onClick={async () => {
+              if (confirm('Are you sure you want to delete ALL orders? This action cannot be undone.')) {
+                try {
+                  const response = await fetch('/api/admin/orders/delete-all', {
+                    method: 'DELETE'
+                  })
+                  if (response.ok) {
+                    alert('All orders deleted successfully')
+                    fetchOrders()
+                  } else {
+                    alert('Failed to delete orders')
+                  }
+                } catch (error) {
+                  alert('Error deleting orders')
+                }
+              }
+            }}
+            variant="destructive"
+            className="bg-red-600 hover:bg-red-700"
+          >
+            Delete All Orders
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}

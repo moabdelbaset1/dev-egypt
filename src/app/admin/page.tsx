@@ -141,7 +141,7 @@ export default function AdminDashboard() {
           <CardContent>
             <div className="text-3xl font-bold text-orange-600 mb-2">{stats?.low_stock_alerts}</div>
             <p className="text-sm text-orange-700 mb-4">Products need restocking</p>
-            <Link href="/admin/inventory-unified">
+            <Link href="/admin/analytics">
               <Button variant="outline" size="sm" className="w-full">
                 View Inventory
               </Button>
@@ -201,7 +201,7 @@ export default function AdminDashboard() {
           </Card>
         </Link>
 
-        <Link href="/admin/inventory-unified">
+        <Link href="/admin/analytics">
           <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -209,8 +209,8 @@ export default function AdminDashboard() {
                   <Activity className="h-6 w-6 text-purple-600" />
                 </div>
                 <div>
-                  <h3 className="font-medium text-gray-900">Inventory Management</h3>
-                  <p className="text-sm text-gray-500">Track and manage inventory</p>
+                  <h3 className="font-medium text-gray-900">Analytics</h3>
+                  <p className="text-sm text-gray-500">View analytics and reports</p>
                 </div>
               </div>
             </CardContent>

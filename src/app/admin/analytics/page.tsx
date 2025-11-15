@@ -3,16 +3,31 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  BarChart3, 
-  TrendingUp, 
-  DollarSign, 
-  ShoppingCart, 
-  Users, 
+import {
+  BarChart3,
+  TrendingUp,
+  DollarSign,
+  ShoppingCart,
+  Users,
   Package,
   Eye,
-  Star
+  Star,
+  Package as InventoryIcon,
+  ClipboardList
 } from "lucide-react"
+import OrdersTracker from "@/components/admin/orders-tracker"
+
+interface InventoryItem {
+  id: string
+  customProductId: string
+  name: string
+  brandName: string
+  quantityOut: number
+  quantityRemaining: number
+  status: 'in' | 'out' | 'low_stock' | 'alert' | 'out_of_stock'
+  location?: string
+  lastUpdated?: string
+}
 
 interface AnalyticsData {
   period: {
@@ -78,9 +93,12 @@ export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState("30")
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
+  const [inventoryLoading, setInventoryLoading] = useState(false)
 
   useEffect(() => {
     fetchAnalytics()
+    fetchInventoryData()
   }, [period])
 
   const fetchAnalytics = async () => {
@@ -93,6 +111,24 @@ export default function AnalyticsPage() {
       console.error("Failed to fetch analytics:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchInventoryData = async () => {
+    try {
+      setInventoryLoading(true)
+      const res = await fetch('/api/admin/inventory-overview?limit=1000')
+      if (res.ok) {
+        const data = await res.json()
+        setInventoryItems(data.items || [])
+      } else {
+        console.warn('Inventory overview API returned non-ok status')
+        setInventoryItems([])
+      }
+    } catch (error) {
+      console.error('Error fetching inventory data:', error)
+    } finally {
+      setInventoryLoading(false)
     }
   }
 
@@ -210,6 +246,14 @@ export default function AnalyticsPage() {
           <TabsTrigger value="products">Top Products</TabsTrigger>
           <TabsTrigger value="brands">Brand Analytics</TabsTrigger>
           <TabsTrigger value="orders">Order Status</TabsTrigger>
+          <TabsTrigger value="inventory">
+            <InventoryIcon className="h-4 w-4 mr-2" />
+            Inventory
+          </TabsTrigger>
+          <TabsTrigger value="order-management">
+            <ClipboardList className="h-4 w-4 mr-2" />
+            Order Management
+          </TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -366,6 +410,129 @@ export default function AnalyticsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Inventory Tab */}
+        <TabsContent value="inventory">
+          <Card>
+            <CardHeader>
+              <CardTitle>Inventory Management</CardTitle>
+              <CardDescription>Track products, movements, alerts and audit in one place</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {inventoryLoading ? (
+                <div className="flex justify-center items-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <Card>
+                      <CardContent className="p-4">
+                        <p className="text-sm text-gray-600">Total Products</p>
+                        <p className="text-3xl font-bold text-gray-900">{inventoryItems.length}</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-4">
+                        <p className="text-sm text-gray-600">In Stock</p>
+                        <p className="text-3xl font-bold text-green-600">{inventoryItems.filter(i => i.status === 'in').length}</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-4">
+                        <p className="text-sm text-gray-600">Low Stock</p>
+                        <p className="text-3xl font-bold text-yellow-600">{inventoryItems.filter(i => i.status === 'low_stock').length}</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-4">
+                        <p className="text-sm text-gray-600">Out of Stock</p>
+                        <p className="text-3xl font-bold text-red-600">{inventoryItems.filter(i => i.status === 'alert').length}</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Inventory Table */}
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product Name</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Out</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {inventoryItems.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                                No inventory items found
+                              </td>
+                            </tr>
+                          ) : (
+                            inventoryItems.map((item) => (
+                              <tr key={item.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-4 whitespace-nowrap font-mono font-bold text-blue-600">
+                                  {item.customProductId}
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap">
+                                  <div className="font-medium text-gray-900">{item.name}</div>
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap">
+                                  <span className="inline-flex px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded">
+                                    {item.brandName}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap text-center">
+                                  <span className="text-red-600 font-bold">{item.quantityOut}</span>
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap text-center">
+                                  <span className="text-green-600 font-bold">{item.quantityRemaining}</span>
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap text-gray-600">
+                                  {item.location || 'N/A'}
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap">
+                                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                    item.status === 'alert' || item.status === 'out_of_stock'
+                                      ? 'bg-red-100 text-red-800'
+                                      : item.status === 'low_stock'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {item.status === 'alert' || item.status === 'out_of_stock'
+                                      ? 'Out of Stock'
+                                      : item.status === 'low_stock'
+                                      ? 'Low Stock'
+                                      : 'In Stock'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Order Management Tab */}
+        <TabsContent value="order-management">
+          <OrdersTracker />
         </TabsContent>
       </Tabs>
 

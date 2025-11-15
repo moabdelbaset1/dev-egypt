@@ -91,7 +91,8 @@ export const POST = async (request: NextRequest) => {
       total_amount: totalAmount,
       payable_amount: totalAmount,
       order_status: 'pending',
-      payment_status: 'unpaid'
+      payment_status: 'unpaid',
+      items: JSON.stringify(items) // Store items as JSON string
     };
 
     const order = await serverDatabases.createDocument(DATABASE_ID, ORDERS_COLLECTION_ID, ID.unique(), orderData);

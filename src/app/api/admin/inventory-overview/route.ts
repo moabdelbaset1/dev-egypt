@@ -51,103 +51,91 @@ export async function GET(request: NextRequest) {
 
     console.log(`✅ Fetched: ${movements.length} movements, ${alerts.length} alerts, ${audit.length} audit items`)
 
-    // Build unified items map from movements
-    const movementMap = new Map<string, any>()
+    // Always build from products collection as the primary source
+    console.log('📦 Building inventory from products collection...')
+    try {
+      const productsResult = await databases.listDocuments(DATABASE_ID, 'products', [Query.limit(1000)])
+        .catch(() => ({ documents: [] }))
 
-    movements.forEach((m: any) => {
-      const key = m.product_id || m.$id || m.product || 'unknown'
-      if (!movementMap.has(key)) {
-        movementMap.set(key, {
-          id: key,
-          customProductId: m.custom_product_id || key,
-          name: m.product_name || m.name || 'Unknown',
-          brandName: m.brand_name || 'Unknown',
-          quantityOut: 0,
-          quantityRemaining: m.quantity_after || 0,
-          status: 'in',
-          location: m.location || 'Warehouse',
-          lastUpdated: m.$updatedAt || m.updatedAt || null,
-        })
-      }
+      const products = productsResult.documents || []
+      console.log(`✅ Found ${products.length} products in database`)
 
-      if (m.movement_type === 'out' || m.movement_type === 'sales') {
-        movementMap.get(key).quantityOut += Math.abs(m.quantity_change || 0)
-      }
-    })
+      // Fetch brands to map brand_id to brand names
+      const brandsResult = await databases.listDocuments(DATABASE_ID, 'brands', [Query.limit(1000)])
+        .catch(() => ({ documents: [] }))
 
-    // Start unified items with movementMap values
-    const unifiedItems: any[] = Array.from(movementMap.values())
+      const brands = brandsResult.documents || []
+      const brandMap = new Map(brands.map((b: any) => [b.$id, b.name || 'Unknown']))
+      console.log(`✅ Fetched ${brands.length} brands for name mapping`)
 
-    // Merge alerts into unified items
-    alerts.forEach((a: any) => {
-      const pid = a.product_id || a.$id || a.product || 'unknown'
-      const idx = unifiedItems.findIndex(i => i.id === pid)
-      const statusValue = (a.status === 'out_of_stock') ? 'alert' : 'low_stock'
+      // Calculate inventory movements for each product
+      const productInventoryMap = new Map<string, any>()
 
-      if (idx >= 0) {
-        unifiedItems[idx].status = a.status || statusValue
-        unifiedItems[idx].quantityRemaining = a.stock_level ?? unifiedItems[idx].quantityRemaining
-      } else {
-        unifiedItems.push({
-          id: pid,
-          customProductId: a.custom_product_id || pid,
-          name: a.product_name || a.name || 'Unknown',
-          brandName: a.brand_name || 'Unknown',
-          quantityOut: 0,
-          quantityRemaining: a.stock_level || 0,
-          status: statusValue,
-          location: a.location || 'Warehouse',
-          lastUpdated: a.$updatedAt || a.updatedAt || null,
-        })
-      }
-    })
+      // Initialize all products with their current stock
+      products.forEach((p: any) => {
+        const productId = p.$id
+        const currentStock = p.units || p.stock || 0
 
-    // If we have no inventory data, try to build from products collection as fallback
-    if (unifiedItems.length === 0) {
-      console.log('⚠️ No inventory movements or alerts found. Attempting fallback from products collection...')
-      try {
-        const productsResult = await databases.listDocuments(DATABASE_ID, 'products', [Query.limit(1000)])
-          .catch(() => ({ documents: [] }))
-        
-        const products = productsResult.documents || []
-        console.log(`✅ Fallback: Found ${products.length} products`)
-        
-        // Log first product to debug the ID structure
-        if (products.length > 0) {
-          console.log('📝 First product structure:', {
-            $id: products[0].$id,
-            custom_product_id: products[0].custom_product_id,
-            name: products[0].name
-          })
-        }
-
-        // Fetch brands to map brand_id to brand names
-        const brandsResult = await databases.listDocuments(DATABASE_ID, 'brands', [Query.limit(1000)])
-          .catch(() => ({ documents: [] }))
-        
-        const brands = brandsResult.documents || []
-        const brandMap = new Map(brands.map((b: any) => [b.$id, b.name || 'Unknown']))
-        console.log(`✅ Fetched ${brands.length} brands for name mapping`)
-
-        const fallbackItems = products.map((p: any) => ({
-          id: p.$id,  // The document ID IS the customProductId (this is what the admin entered)
-          customProductId: p.$id,  // Same - the user-defined ID from when product was created
+        productInventoryMap.set(productId, {
+          id: productId,
+          customProductId: p.custom_product_id || productId,
           name: p.name || 'Unknown',
-          brandName: brandMap.get(p.brand_id) || p.brand_id || 'Unknown',  // Brand NAME for display
-          quantityOut: 0,
-          quantityRemaining: p.units || p.stock || 0,
-          status: (p.units || p.stock || 0) === 0 ? 'alert' : (p.units || p.stock || 0) < 5 ? 'low_stock' : 'in',
+          brandName: brandMap.get(p.brand_id) || p.brand_id || 'Unknown',
+          quantityOut: 0, // Will be calculated from movements
+          quantityRemaining: currentStock,
+          status: currentStock === 0 ? 'alert' : currentStock < 5 ? 'low_stock' : 'in',
           location: 'Warehouse',
           lastUpdated: p.$updatedAt || null,
-        }))
+        })
+      })
 
-        unifiedItems.push(...fallbackItems)
-      } catch (err: any) {
-        console.warn(`⚠️ Fallback also failed: ${err.message}`)
-      }
+      // Calculate quantityOut from movements
+      movements.forEach((m: any) => {
+        const productId = m.product_id || m.$id
+        const product = productInventoryMap.get(productId)
+
+        if (product && (m.movement_type === 'out' || m.movement_type === 'sales' || m.movement_type === 'order')) {
+          const quantityChange = Math.abs(m.quantity_change || m.quantity || 0)
+          product.quantityOut += quantityChange
+          // Update remaining based on movements if available
+          if (m.quantity_after !== undefined) {
+            product.quantityRemaining = m.quantity_after
+          }
+        }
+      })
+
+      // Update status based on alerts
+      alerts.forEach((a: any) => {
+        const productId = a.product_id || a.$id
+        const product = productInventoryMap.get(productId)
+
+        if (product) {
+          if (a.status === 'out_of_stock' || a.status === 'alert') {
+            product.status = 'alert'
+          } else if (a.status === 'low_stock') {
+            product.status = 'low_stock'
+          }
+          // Update stock level from alerts if available
+          if (a.stock_level !== undefined) {
+            product.quantityRemaining = a.stock_level
+          }
+        }
+      })
+
+      // Convert to array
+      const unifiedItems: any[] = Array.from(productInventoryMap.values())
+
+      console.log(`✅ Built inventory overview with ${unifiedItems.length} products`)
+      console.log(`📊 Sample product:`, unifiedItems[0] || 'No products')
+
+      return NextResponse.json({ items: unifiedItems })
+    } catch (err: any) {
+      console.warn(`⚠️ Failed to build inventory from products: ${err.message}`)
+      return NextResponse.json(
+        { items: [], error: 'Failed to load products inventory' },
+        { status: 500 }
+      )
     }
-
-    return NextResponse.json({ items: unifiedItems })
   } catch (error: any) {
     console.error('❌ Error building inventory overview:', error)
     console.error('  Stack:', error.stack)

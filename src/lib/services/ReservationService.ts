@@ -1,4 +1,6 @@
 import { createAdminClient } from '@/lib/appwrite-admin';
+import { DATABASE_ID, PRODUCTS_COLLECTION_ID, INVENTORY_MOVEMENTS_COLLECTION_ID } from '@/constants/appwrite';
+import { ID } from 'appwrite';
 
 export class ReservationService {
   static async reserveStock(
@@ -8,6 +10,8 @@ export class ReservationService {
     orderId: string
   ) {
     try {
+      const { databases } = await createAdminClient();
+
       // Get current product
       const product = await databases.getDocument(
         DATABASE_ID,
@@ -36,7 +40,7 @@ export class ReservationService {
       await databases.createDocument(
         DATABASE_ID,
         INVENTORY_MOVEMENTS_COLLECTION_ID,
-        'unique()',
+        ID.unique(),
         {
           product_id: productId,
           product_name: productName,
@@ -62,6 +66,8 @@ export class ReservationService {
     orderId: string
   ) {
     try {
+      const { databases } = await createAdminClient();
+
       // Get current product
       const product = await databases.getDocument(
         DATABASE_ID,
@@ -83,7 +89,7 @@ export class ReservationService {
       await databases.createDocument(
         DATABASE_ID,
         INVENTORY_MOVEMENTS_COLLECTION_ID,
-        'unique()',
+        ID.unique(),
         {
           product_id: productId,
           product_name: productName,

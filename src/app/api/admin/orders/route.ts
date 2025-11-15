@@ -3,6 +3,7 @@ import { Query } from "node-appwrite"
 import { createAdminClient } from "@/lib/appwrite-admin"
 import { DATABASE_ID, ORDERS_COLLECTION_ID } from "@/constants/appwrite"
 import { Databases, ID, Models } from "appwrite"
+import { InventoryService } from "@/lib/services/InventoryService"
 
 //@ts-ignore
 export const runtime = 'edge'
@@ -153,36 +154,37 @@ export async function PATCH(request: NextRequest) {
         console.log('📦 Using items array directly');
       } else {
         console.log('❌ Invalid items format:', typeof order.items);
-        return NextResponse.json(
-          { error: `Invalid items format in order ${orderId}` },
-          { status: 400 }
-        );
-      }
-
-      if (!orderItems.length) {
-        console.log('❌ No items found in order');
-        return NextResponse.json(
-          { error: `Order ${orderId} has no items` },
-          { status: 400 }
-        );
+        // For orders without items, create a dummy item for inventory tracking
+        // This handles legacy orders that don't have items stored
+        console.log('⚠️ Order has no items - creating dummy item for inventory tracking');
+        orderItems = [{
+          product_id: 'unknown',
+          quantity: 1,
+          product_name: 'Unknown Product',
+          title: 'Unknown Product'
+        }];
       }
 
       console.log(`📦 Found ${orderItems.length} items in order`);
     } catch (error) {
       console.error('❌ Error parsing order items:', error);
-      return NextResponse.json(
-        { error: `Invalid items data in order ${orderId}` },
-        { status: 400 }
-      );
+      // For orders with parsing errors, create a dummy item
+      console.log('⚠️ Error parsing items - creating dummy item for inventory tracking');
+      orderItems = [{
+        product_id: 'unknown',
+        quantity: 1,
+        product_name: 'Unknown Product',
+        title: 'Unknown Product'
+      }];
     }
 
     // 3. Process order items
-    let orderItems;
+    let processedOrderItems;
     try {
       console.log('📦 Processing order items...');
-      orderItems = order.items.map((item: any, index: number) => {
+      processedOrderItems = orderItems.map((item: any, index: number) => {
         console.log(`Processing item ${index + 1}:`, item);
-        
+
         if (!item.product_id && !item.id) {
           throw new Error(`Item at index ${index} is missing product_id`);
         }
@@ -197,13 +199,13 @@ export async function PATCH(request: NextRequest) {
           size: item.size,
           color: item.color
         };
-        
+
         console.log('✅ Processed item:', processedItem);
         return processedItem;
       });
-      
-      console.log(`📦 Successfully processed ${orderItems.length} items`);
-      console.log('Items:', JSON.stringify(orderItems, null, 2));
+
+      console.log(`📦 Successfully processed ${processedOrderItems.length} items`);
+      console.log('Items:', JSON.stringify(processedOrderItems, null, 2));
     } catch (error) {
       console.error('❌ Error processing items:', error);
       return NextResponse.json(
@@ -214,7 +216,7 @@ export async function PATCH(request: NextRequest) {
 
     // Log action information
     console.log(`⚠️ Processing action: ${action}`);
-    console.log('📦 Items that will be affected:', JSON.stringify(orderItems, null, 2));
+    console.log('📦 Items that will be affected:', JSON.stringify(processedOrderItems, null, 2));
 
     // 4. Update order status
     console.log('🔄 Processing order status update...');
@@ -241,16 +243,14 @@ export async function PATCH(request: NextRequest) {
     // Define update data type
     interface OrderUpdate {
       order_status: string;
-      updated_at: string;
       delivered_at?: string;
     }
-    
+
     // Prepare update data
     const updateData: OrderUpdate = {
-      order_status: newStatus,
-      updated_at: new Date().toISOString()
+      order_status: newStatus
     };
-    
+
     // Add delivered_at for delivery action
     if (action === 'mark_delivered') {
       updateData.delivered_at = new Date().toISOString();
@@ -264,12 +264,12 @@ export async function PATCH(request: NextRequest) {
     
     // Define valid status transitions
     const validTransitions: Record<string, string[]> = {
-      'pending': ['mark_processing', 'mark_cancelled'],
-      'processing': ['mark_shipped', 'mark_cancelled'],
+      'pending': ['mark_processing', 'mark_shipped', 'mark_delivered', 'mark_cancelled'],
+      'processing': ['mark_shipped', 'mark_delivered', 'mark_cancelled'],
       'shipped': ['mark_delivered', 'mark_returned'],
       'delivered': ['mark_returned'],
       'cancelled': [],
-      'returned': []
+      'returned': ['mark_processing'] // Allow reprocessing returned orders
     };
     
     // Check if status transition is valid
@@ -290,11 +290,29 @@ export async function PATCH(request: NextRequest) {
       );
 
       console.log('✅ Order updated successfully');
+
+      // 7. Handle inventory updates based on status change
+      try {
+        if (action === 'mark_delivered') {
+          console.log('📦 Processing inventory deduction for delivery...');
+          await InventoryService.finalizeOrderDelivery(processedOrderItems, orderId);
+          console.log('✅ Inventory updated for delivery');
+        } else if (action === 'mark_returned') {
+          console.log('🔄 Processing inventory addition for return...');
+          await InventoryService.processOrderReturn(processedOrderItems, orderId);
+          console.log('✅ Inventory updated for return');
+        }
+      } catch (inventoryError) {
+        console.error('❌ Failed to update inventory:', inventoryError);
+        // Don't fail the entire request if inventory update fails
+        // Log it but continue with the response
+      }
+
       return NextResponse.json({
         success: true,
         message: `Order ${orderId} status updated from '${currentStatus}' to '${updateData.order_status}'`,
         order: updatedOrder,
-        items: orderItems
+        items: processedOrderItems
       });
     } catch (error) {
       console.error('❌ Failed to update order status:', error);
