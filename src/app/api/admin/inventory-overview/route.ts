@@ -1,154 +1,175 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { Query } from 'node-appwrite'
-import { createAdminClient } from '@/lib/appwrite-admin'
-
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || ''
-const MOVEMENTS_COLLECTION = 'inventory_movements'
-const ALERTS_COLLECTION = 'inventory_alerts'
-const AUDIT_COLLECTION = 'inventory_audit_items'
+import { NextRequest, NextResponse } from 'next/server';
+import { Query } from 'node-appwrite';
+import { createAdminClient } from '@/lib/appwrite-admin';
+import { DATABASE_ID, PRODUCTS_COLLECTION_ID, INVENTORY_MOVEMENTS_COLLECTION_ID } from '@/constants/appwrite';
 
 export async function GET(request: NextRequest) {
   try {
-    if (!DATABASE_ID) {
-      console.error('❌ DATABASE_ID not configured in environment')
-      return NextResponse.json(
-        { items: [], error: 'Database ID not configured' },
-        { status: 500 }
-      )
-    }
+    const { searchParams } = new URL(request.url);
+    const limit = parseInt(searchParams.get('limit') || '100');
 
-    console.log('📊 Fetching inventory data from Appwrite...')
-    console.log(`  Database: ${DATABASE_ID}`)
-    console.log(`  Collections: ${MOVEMENTS_COLLECTION}, ${ALERTS_COLLECTION}, ${AUDIT_COLLECTION}`)
+    const { databases } = await createAdminClient();
 
-    const { databases } = await createAdminClient()
+    // Fetch all products
+    const { documents: products } = await databases.listDocuments(
+      DATABASE_ID,
+      PRODUCTS_COLLECTION_ID,
+      [
+        Query.limit(limit),
+        Query.orderDesc('$createdAt')
+      ]
+    );
 
-    // Fetch movements and alerts in parallel (audit is optional)
-    const [movementsResult, alertsResult, auditResult] = await Promise.all([
-      databases.listDocuments(DATABASE_ID, MOVEMENTS_COLLECTION, [Query.limit(1000)])
-        .then(res => ({ documents: res.documents || [], error: null }))
-        .catch(err => {
-          console.warn(`⚠️ Error fetching movements: ${err.message}`)
-          return { documents: [], error: err.message }
-        }),
-      databases.listDocuments(DATABASE_ID, ALERTS_COLLECTION, [Query.limit(1000)])
-        .then(res => ({ documents: res.documents || [], error: null }))
-        .catch(err => {
-          console.warn(`⚠️ Error fetching alerts: ${err.message}`)
-          return { documents: [], error: err.message }
-        }),
-      databases.listDocuments(DATABASE_ID, AUDIT_COLLECTION, [Query.limit(1000)])
-        .then(res => ({ documents: res.documents || [], error: null }))
-        .catch(err => {
-          console.warn(`⚠️ Error fetching audit: ${err.message}`)
-          return { documents: [], error: err.message }
-        }),
-    ])
-
-    const movements = movementsResult.documents || []
-    const alerts = alertsResult.documents || []
-    const audit = auditResult.documents || []
-
-    console.log(`✅ Fetched: ${movements.length} movements, ${alerts.length} alerts, ${audit.length} audit items`)
-
-    // Always build from products collection as the primary source
-    console.log('📦 Building inventory from products collection...')
+    // Fetch inventory movements for these products
+    let movements: any[] = [];
     try {
-      const productsResult = await databases.listDocuments(DATABASE_ID, 'products', [Query.limit(1000)])
-        .catch(() => ({ documents: [] }))
-
-      const products = productsResult.documents || []
-      console.log(`✅ Found ${products.length} products in database`)
-
-      // Fetch brands to map brand_id to brand names
-      const brandsResult = await databases.listDocuments(DATABASE_ID, 'brands', [Query.limit(1000)])
-        .catch(() => ({ documents: [] }))
-
-      const brands = brandsResult.documents || []
-      const brandMap = new Map(brands.map((b: any) => [b.$id, b.name || 'Unknown']))
-      console.log(`✅ Fetched ${brands.length} brands for name mapping`)
-
-      // Calculate inventory movements for each product
-      const productInventoryMap = new Map<string, any>()
-
-      // Initialize all products with their current stock
-      products.forEach((p: any) => {
-        const productId = p.$id
-        const currentStock = p.units || p.stock || 0
-
-        productInventoryMap.set(productId, {
-          id: productId,
-          customProductId: p.custom_product_id || productId,
-          name: p.name || 'Unknown',
-          brandName: brandMap.get(p.brand_id) || p.brand_id || 'Unknown',
-          quantityOut: 0, // Will be calculated from movements
-          quantityRemaining: currentStock,
-          status: currentStock === 0 ? 'alert' : currentStock < 5 ? 'low_stock' : 'in',
-          location: 'Warehouse',
-          lastUpdated: p.$updatedAt || null,
-        })
-      })
-
-      // Calculate quantityOut from movements
-      movements.forEach((m: any) => {
-        const productId = m.product_id || m.$id
-        const product = productInventoryMap.get(productId)
-
-        if (product && (m.movement_type === 'out' || m.movement_type === 'sales' || m.movement_type === 'order')) {
-          const quantityChange = Math.abs(m.quantity_change || m.quantity || 0)
-          product.quantityOut += quantityChange
-          // Update remaining based on movements if available
-          if (m.quantity_after !== undefined) {
-            product.quantityRemaining = m.quantity_after
-          }
-        }
-      })
-
-      // Update status based on alerts
-      alerts.forEach((a: any) => {
-        const productId = a.product_id || a.$id
-        const product = productInventoryMap.get(productId)
-
-        if (product) {
-          if (a.status === 'out_of_stock' || a.status === 'alert') {
-            product.status = 'alert'
-          } else if (a.status === 'low_stock') {
-            product.status = 'low_stock'
-          }
-          // Update stock level from alerts if available
-          if (a.stock_level !== undefined) {
-            product.quantityRemaining = a.stock_level
-          }
-        }
-      })
-
-      // Convert to array
-      const unifiedItems: any[] = Array.from(productInventoryMap.values())
-
-      console.log(`✅ Built inventory overview with ${unifiedItems.length} products`)
-      console.log(`📊 Sample product:`, unifiedItems[0] || 'No products')
-
-      return NextResponse.json({ items: unifiedItems })
-    } catch (err: any) {
-      console.warn(`⚠️ Failed to build inventory from products: ${err.message}`)
-      return NextResponse.json(
-        { items: [], error: 'Failed to load products inventory' },
-        { status: 500 }
-      )
+      const { documents: movementDocs } = await databases.listDocuments(
+        DATABASE_ID,
+        INVENTORY_MOVEMENTS_COLLECTION_ID,
+        [
+          Query.limit(1000),
+          Query.orderDesc('created_at')
+        ]
+      );
+      movements = movementDocs;
+      console.log(`📦 Found ${movements.length} inventory movements`);
+      if (movements.length > 0) {
+        console.log('Sample movement:', movements[0]);
+      }
+    } catch (error) {
+      console.warn('⚠️ Inventory movements collection not available:', error);
+      movements = [];
     }
-  } catch (error: any) {
-    console.error('❌ Error building inventory overview:', error)
-    console.error('  Stack:', error.stack)
+
+    // Process inventory data
+    console.log(`\n🔍 Processing ${products.length} products...`);
+    const inventoryItems = products.map((product: any, index: number) => {
+      // Log first product for debugging
+      if (index === 0) {
+        console.log('\n📦 Sample product structure:', {
+          id: product.$id,
+          name: product.name,
+          brand_name: product.brand_name,
+          brandName: product.brandName,
+          brand: product.brand,
+          brand_id: product.brand_id,
+          customProductId: product.customProductId,
+          custom_product_id: product.custom_product_id,
+          units: product.units,
+          stockQuantity: product.stockQuantity
+        });
+      }
+
+      // Calculate quantities from movements
+      const productMovements = movements.filter((m: any) => m.product_id === product.$id);
+      
+      if (index === 0 && productMovements.length > 0) {
+        console.log(`\n📊 Product has ${productMovements.length} movements`);
+        console.log('Sample movement:', productMovements[0]);
+      }
+      
+      // Count delivered items (movement_type: 'sale' means delivered)
+      const quantityDelivered = productMovements
+        .filter((m: any) => m.movement_type === 'sale')
+        .reduce((sum: number, m: any) => sum + Math.abs(m.quantity || 0), 0);
+      
+      // Count returned items
+      const quantityReturned = productMovements
+        .filter((m: any) => m.movement_type === 'return')
+        .reduce((sum: number, m: any) => sum + Math.abs(m.quantity || 0), 0);
+
+      // Current stock from product
+      const currentStock = product.units || product.stockQuantity || 0;
+      
+      // Calculate net sold (delivered minus returned)
+      const netSold = quantityDelivered - quantityReturned;
+      
+      // Calculate initial stock: Current + NetSold
+      // Example: If current = 2, delivered = 4, returned = 0 => initial = 2 + 4 = 6
+      const initialStock = currentStock + netSold;
+      
+      // Remaining is just current stock
+      const quantityRemaining = currentStock;
+      
+      // Get brand name - try multiple possible fields
+      let brandName = 'Unknown Brand';
+      if (product.brand_name) {
+        brandName = product.brand_name;
+      } else if (product.brandName) {
+        brandName = product.brandName;
+      } else if (product.brand) {
+        brandName = product.brand;
+      } else if (product.brand_id) {
+        // If we have brand_id but not name, we'll show the ID
+        brandName = `Brand ${product.brand_id.slice(-8)}`;
+      }
+      
+      // Determine status based on current stock
+      let status: 'in' | 'out' | 'low_stock' | 'alert' | 'out_of_stock';
+      if (currentStock === 0) {
+        status = 'out_of_stock';
+      } else if (currentStock <= 5) {
+        status = 'low_stock';
+      } else if (currentStock <= 10) {
+        status = 'alert';
+      } else {
+        status = 'in';
+      }
+
+      // Get last movement date
+      const lastMovement = productMovements[0];
+      const lastUpdated = lastMovement?.created_at || product.$updatedAt;
+
+      return {
+        id: product.$id,
+        customProductId: product.customProductId || product.custom_product_id || product.$id.slice(-8),
+        name: product.name || product.title || 'Unnamed Product',
+        brandName: brandName,
+        quantityDelivered,
+        quantityReturned,
+        quantityRemaining,
+        initialStock, // Original stock before any sales
+        netSold, // Net amount that went out (delivered - returned)
+        status,
+        location: product.location || product.warehouse_location || 'Main Warehouse',
+        lastUpdated: lastUpdated
+      };
+    });
+
+    // Sort by status priority (out of stock first, then low stock)
+    inventoryItems.sort((a, b) => {
+      const statusPriority: Record<string, number> = {
+        'out_of_stock': 0,
+        'alert': 1,
+        'low_stock': 2,
+        'in': 3,
+        'out': 4
+      };
+      return statusPriority[a.status] - statusPriority[b.status];
+    });
+
+    return NextResponse.json({
+      success: true,
+      items: inventoryItems,
+      total: inventoryItems.length,
+      summary: {
+        totalProducts: inventoryItems.length,
+        inStock: inventoryItems.filter(i => i.status === 'in').length,
+        lowStock: inventoryItems.filter(i => i.status === 'low_stock').length,
+        outOfStock: inventoryItems.filter(i => i.status === 'out_of_stock' || i.status === 'alert').length,
+        totalDelivered: inventoryItems.reduce((sum, i) => sum + i.quantityDelivered, 0),
+        totalReturned: inventoryItems.reduce((sum, i) => sum + i.quantityReturned, 0),
+        totalNetSold: inventoryItems.reduce((sum, i) => sum + i.netSold, 0),
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching inventory overview:', error);
     return NextResponse.json(
       { 
-        items: [], 
-        error: error.message || 'Unknown error',
-        debug: {
-          DATABASE_ID: DATABASE_ID || 'NOT_SET',
-          env: process.env.NODE_ENV
-        }
+        error: 'Failed to fetch inventory overview',
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
-    )
+    );
   }
 }

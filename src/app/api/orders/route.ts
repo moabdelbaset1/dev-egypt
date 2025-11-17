@@ -92,25 +92,18 @@ export const POST = async (request: NextRequest) => {
       payable_amount: totalAmount,
       order_status: 'pending',
       payment_status: 'unpaid',
-      items: JSON.stringify(items) // Store items as JSON string
+      items: JSON.stringify(items), // Store items as JSON string
+      customer_name: `${email.split('@')[0]}`, // Extract name from email
+      customer_email: email || customer_id,
+      shipping_address: JSON.stringify(shippingAddress || {}),
+      fulfillment_status: 'unfulfilled'
     };
 
     const order = await serverDatabases.createDocument(DATABASE_ID, ORDERS_COLLECTION_ID, ID.unique(), orderData);
 
-    // Reduce inventory after successful order creation
-    for (const item of items) {
-      try {
-        const product = await serverDatabases.getDocument(DATABASE_ID, PRODUCTS_COLLECTION_ID, item.productId);
-        const newStock = Math.max(0, (product.units || product.stockQuantity || 0) - item.quantity);
-        await serverDatabases.updateDocument(DATABASE_ID, PRODUCTS_COLLECTION_ID, item.productId, {
-          units: newStock,
-          stockQuantity: newStock
-        });
-        console.log(`✅ Reduced stock for ${product.name}: ${(product.units || product.stockQuantity || 0)} → ${newStock}`);
-      } catch (error) {
-        console.error('Error updating stock:', error);
-      }
-    }
+    // Note: Inventory is NOT deducted here. It will be deducted when order status changes to 'delivered'
+    // This allows orders to be created without immediately reducing available stock
+    console.log(`✅ Order created successfully. Inventory will be deducted when order is marked as delivered.`);
 
     return NextResponse.json({
       success: true,

@@ -47,9 +47,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { href: '/admin', icon: Home, label: 'Dashboard', badge: null },
     { href: '/admin/products', icon: Package, label: 'Products', badge: null },
     { href: '/admin/orders', icon: ShoppingCart, label: 'Orders', badge: null },
+    { href: '/admin/inventory-management', icon: Activity, label: 'Inventory Management', badge: null },
     { href: '/admin/analytics', icon: BarChart3, label: 'Analytics', badge: null },
     { href: '/admin/users', icon: Users, label: 'Users', badge: null },
-    { href: '/admin/inventory-unified', icon: Activity, label: 'Inventory', badge: null },
     { href: '/admin/settings', icon: Settings, label: 'Settings', badge: null }
   ]
 

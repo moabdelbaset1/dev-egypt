@@ -1,3 +1,18 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 "use client"
 
 import React, { useState, useEffect } from "react"
@@ -98,6 +113,7 @@ export default function OrdersTracker() {
     returned: 0,
     totalRevenue: 0
   })
+  const [stockData, setStockData] = useState<{[key: string]: {current: number, variant?: string}}>({})
   
   console.log(`📊 Current state - orders.length: ${orders.length}, loading: ${loading}`)
 
@@ -186,8 +202,56 @@ export default function OrdersTracker() {
       newExpanded.delete(orderId)
     } else {
       newExpanded.add(orderId)
+      // Fetch stock data when expanding
+      fetchStockData(orderId)
     }
     setExpandedRows(newExpanded)
+  }
+
+  const fetchStockData = async (orderId: string) => {
+    try {
+      const order = orders.find(o => o.$id === orderId)
+      if (!order) return
+
+      const items = JSON.parse(order.items || '[]')
+      const stockPromises = items.map(async (item: any) => {
+        try {
+          // Handle both product_id and productId formats
+          const productId = item.product_id || item.productId
+          if (!productId) {
+            console.error('No product ID found in item:', item)
+            return null
+          }
+          const response = await fetch(`/api/admin/products/${productId}`)
+          if (response.ok) {
+            const product = await response.json()
+            const currentStock = item.variant_id
+              ? product.variants?.find((v: any) => v.$id === item.variant_id)?.stock || 0
+              : product.stock || product.units || 0
+            return {
+              key: `${item.product_id}-${item.variant_id || 'main'}`,
+              current: currentStock
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to fetch stock for ${item.product_id}:`, error)
+        }
+        return null
+      })
+
+      const stockResults = await Promise.all(stockPromises)
+      const newStockData: {[key: string]: {current: number}} = {}
+
+      stockResults.forEach(result => {
+        if (result) {
+          newStockData[result.key] = { current: result.current }
+        }
+      })
+
+      setStockData(prev => ({ ...prev, ...newStockData }))
+    } catch (error) {
+      console.error('Failed to fetch stock data:', error)
+    }
   }
 
   // Function to create sample orders
@@ -255,10 +319,10 @@ export default function OrdersTracker() {
       const validTransitions: Record<string, string[]> = {
         'pending': ['processing', 'shipped', 'delivered', 'cancelled'],
         'processing': ['shipped', 'delivered', 'cancelled'],
-        'shipped': ['delivered', 'returned'],
-        'delivered': ['returned'],
+        'shipped': ['delivered', 'returned', 'cancelled'],
+        'delivered': ['returned', 'cancelled'], // Can cancel delivered orders (e.g., customer complaint)
         'cancelled': [], // Cannot change from cancelled
-        'returned': ['processing'] // Can only reprocess returned orders
+        'returned': ['processing', 'cancelled'] // Can reprocess or permanently cancel returned orders
       }
 
       if (!validTransitions[currentStatus]?.includes(newStatus)) {
@@ -550,7 +614,7 @@ export default function OrdersTracker() {
                   <TableHead className="w-8"></TableHead>
                   <TableHead>Order ID</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead>Items</TableHead>
+                  <TableHead className="text-center">Total Qty</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Payment</TableHead>
@@ -584,14 +648,20 @@ export default function OrdersTracker() {
                           <div className="text-sm text-gray-600">{order.customer_email}</div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-center font-semibold">
+                      <TableCell className="text-center">
                         {(() => {
                           try {
                             const items = JSON.parse(order.items || '[]');
                             const totalItems = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
-                            return totalItems;
+                            const itemsCount = items.length;
+                            return (
+                              <div className="flex flex-col items-center">
+                                <span className="font-bold text-lg text-blue-600">{totalItems}</span>
+                                <span className="text-xs text-gray-500">{itemsCount} product{itemsCount !== 1 ? 's' : ''}</span>
+                              </div>
+                            );
                           } catch {
-                            return 'N/A';
+                            return <span className="text-gray-400">N/A</span>;
                           }
                         })()}
                       </TableCell>
@@ -680,6 +750,100 @@ export default function OrdersTracker() {
                                       }
                                     })()}
                                   </span>
+                                </div>
+                              </div>
+
+                              {/* Detailed Items List */}
+                              <div className="mt-4">
+                                <h4 className="font-medium text-gray-900 mb-2 flex items-center justify-between">
+                                  <span>Order Items & Stock Status:</span>
+                                  <span className="text-sm font-normal text-gray-500">
+                                    {(() => {
+                                      try {
+                                        const items = JSON.parse(order.items || '[]');
+                                        const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+                                        return `Total: ${totalQty} pieces`;
+                                      } catch {
+                                        return '';
+                                      }
+                                    })()}
+                                  </span>
+                                </h4>
+                                <div className="space-y-2">
+                                  {(() => {
+                                    try {
+                                      const items = JSON.parse(order.items || '[]');
+                                      return items.map((item: any, index: number) => {
+                                        const stockKey = `${item.productId || item.product_id}-${item.variant_id || 'main'}`;
+                                        const currentStock = stockData[stockKey]?.current || 0;
+                                        const requestedQty = item.quantity || 1;
+                                        const remainingAfterDelivery = currentStock - requestedQty;
+                                        const isLowStock = currentStock <= 5 && currentStock > 0;
+                                        const isOutOfStock = currentStock < requestedQty;
+                                        const orderStatus = order.status || order.order_status;
+                                        const isDelivered = orderStatus === 'delivered';
+
+                                        return (
+                                          <div key={index} className={`p-3 rounded text-sm border ${isOutOfStock ? 'bg-red-50 border-red-300' : isLowStock ? 'bg-yellow-50 border-yellow-300' : 'bg-gray-50 border-gray-200'}`}>
+                                            <div className="flex items-start justify-between">
+                                              <div className="flex-1">
+                                                <div className="font-medium text-gray-900">{item.name || item.product_name || item.title || 'Unknown Product'}</div>
+                                                {item.sku && (
+                                                  <div className="text-xs text-gray-500 mt-0.5">SKU: {item.sku}</div>
+                                                )}
+                                                {(item.size || item.color) && (
+                                                  <div className="text-xs text-gray-600 mt-1">
+                                                    {item.size && `Size: ${item.size}`}
+                                                    {item.size && item.color && ' | '}
+                                                    {item.color && `Color: ${item.color}`}
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <div className="text-right ml-4 min-w-[140px]">
+                                                <div className="font-bold text-blue-600 text-base">Qty: {requestedQty}</div>
+                                                <div className="text-xs text-gray-600 mt-1">
+                                                  <span className={currentStock === 0 ? 'text-red-600 font-medium' : ''}>
+                                                    Stock: {currentStock}
+                                                  </span>
+                                                </div>
+                                                {isDelivered && (
+                                                  <div className={`text-xs font-medium mt-1 px-2 py-0.5 rounded ${remainingAfterDelivery < 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                                    Remaining: {Math.max(0, remainingAfterDelivery)}
+                                                  </div>
+                                                )}
+                                                {!isDelivered && isOutOfStock && (
+                                                  <div className="text-xs font-medium mt-1 px-2 py-0.5 rounded bg-red-100 text-red-700">
+                                                    Short: {requestedQty - currentStock}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                            {isOutOfStock && !isDelivered && (
+                                              <div className="mt-2 p-2 rounded bg-red-100 border border-red-300">
+                                                <div className="text-xs text-red-700 font-medium flex items-center gap-1">
+                                                  <AlertCircle className="h-3 w-3" />
+                                                  Cannot fulfill! Need {requestedQty - currentStock} more units
+                                                </div>
+                                              </div>
+                                            )}
+                                            {isLowStock && !isOutOfStock && !isDelivered && (
+                                              <div className="mt-2 text-xs text-yellow-700 font-medium flex items-center gap-1">
+                                                <AlertCircle className="h-3 w-3" />
+                                                Low stock - consider restocking
+                                              </div>
+                                            )}
+                                            {isDelivered && (
+                                              <div className="mt-2 text-xs text-gray-600 italic">
+                                                ✓ {requestedQty} units deducted from inventory
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      });
+                                    } catch {
+                                      return <div className="text-sm text-gray-600">Unable to load item details</div>;
+                                    }
+                                  })()}
                                 </div>
                               </div>
                             </div>

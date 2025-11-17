@@ -663,13 +663,21 @@ export default function ProductsPage() {
                                 {stockInfo.currentStock === 0 ? 'Out of Stock' :
                                  stockInfo.currentStock <= stockInfo.reorderPoint ? 'Low Stock' : 'In Stock'}
                               </Badge>
-                              <Warehouse className="h-3 w-3 text-muted-foreground" />
                             </div>
-                            <div className="text-sm text-muted-foreground">
-                              <div>Current: <span className="font-medium">{stockInfo.currentStock}</span></div>
-                              <div>Available: <span className="font-medium text-green-600">{stockInfo.availableStock}</span></div>
+                            <div className="text-xs text-muted-foreground space-y-0.5">
+                              <div className="flex justify-between">
+                                <span>Current:</span>
+                                <span className="font-semibold text-gray-900">{stockInfo.currentStock}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Available:</span>
+                                <span className="font-semibold text-green-600">{stockInfo.availableStock}</span>
+                              </div>
                               {stockInfo.reservedStock > 0 && (
-                                <div>Reserved: <span className="font-medium text-blue-600">{stockInfo.reservedStock}</span></div>
+                                <div className="flex justify-between">
+                                  <span>Reserved:</span>
+                                  <span className="font-semibold text-blue-600">{stockInfo.reservedStock}</span>
+                                </div>
                               )}
                             </div>
                           </div>

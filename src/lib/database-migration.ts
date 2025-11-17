@@ -2,7 +2,7 @@
 // Adds missing fields to existing Appwrite collections
 
 import { createAdminClient } from './appwrite-admin';
-import { DATABASE_ID, PRODUCTS_COLLECTION_ID } from './appwrite';
+import { DATABASE_ID, PRODUCTS_COLLECTION_ID, ORDERS_COLLECTION_ID } from './appwrite';
 
 export interface MigrationResult {
   success: boolean;
@@ -116,6 +116,135 @@ export class DatabaseMigration {
   }
 
   /**
+   * Migrates the orders collection to include missing fields
+   */
+  static async migrateOrdersCollection(): Promise<MigrationResult> {
+    const result: MigrationResult = {
+      success: true,
+      message: 'Orders collection migration completed',
+      details: {
+        fieldsAdded: [],
+        errors: []
+      }
+    };
+
+    try {
+      console.log('🔄 Starting orders collection migration...');
+      const { databases } = await createAdminClient();
+
+      // Check if items field exists and add it if missing
+      try {
+        await databases.getAttribute(DATABASE_ID, ORDERS_COLLECTION_ID, 'items');
+        console.log('✅ items field already exists');
+      } catch (error: any) {
+        if (error.code === 404) {
+          console.log('➕ Adding missing items field...');
+
+          try {
+            await databases.createStringAttribute(
+              DATABASE_ID,
+              ORDERS_COLLECTION_ID,
+              'items',
+              10000, // size - large enough for JSON string
+              true // required
+            );
+
+            result.details.fieldsAdded.push('items');
+            console.log('✅ Added items field successfully');
+          } catch (addError: any) {
+            result.details.errors.push(`Failed to add items field: ${addError.message}`);
+            console.error('❌ Failed to add items field:', addError);
+          }
+        } else {
+          result.details.errors.push(`Error checking items field: ${error.message}`);
+          console.error('❌ Error checking items field:', error);
+        }
+      }
+
+      // Check for other potentially missing fields based on current usage
+      const fieldsToCheck = [
+        { name: 'order_code', type: 'string', required: true, size: 100 },
+        { name: 'brand_id', type: 'string', required: false, size: 255 },
+        { name: 'total_amount', type: 'float', required: true },
+        { name: 'payable_amount', type: 'float', required: true },
+        { name: 'order_status', type: 'string', required: true, size: 50 },
+        { name: 'payment_status', type: 'string', required: true, size: 50 },
+        { name: 'shipping_address', type: 'string', required: false, size: 2000 },
+        { name: 'customer_name', type: 'string', required: false, size: 255 },
+        { name: 'customer_email', type: 'string', required: false, size: 255 },
+        { name: 'fulfillment_status', type: 'string', required: false, size: 50 },
+        { name: 'shipped_at', type: 'datetime', required: false },
+        { name: 'delivered_at', type: 'datetime', required: false },
+        { name: 'tracking_number', type: 'string', required: false, size: 255 },
+        { name: 'carrier', type: 'string', required: false, size: 100 }
+      ];
+
+      for (const field of fieldsToCheck) {
+        try {
+          await databases.getAttribute(DATABASE_ID, ORDERS_COLLECTION_ID, field.name);
+          console.log(`✅ ${field.name} field already exists`);
+        } catch (error: any) {
+          if (error.code === 404) {
+            console.log(`➕ Adding missing ${field.name} field...`);
+
+            try {
+              if (field.type === 'string') {
+                await databases.createStringAttribute(
+                  DATABASE_ID,
+                  ORDERS_COLLECTION_ID,
+                  field.name,
+                  field.size || 255,
+                  field.required
+                );
+              } else if (field.type === 'float') {
+                await databases.createFloatAttribute(
+                  DATABASE_ID,
+                  ORDERS_COLLECTION_ID,
+                  field.name,
+                  field.required
+                );
+              } else if (field.type === 'datetime') {
+                await databases.createDatetimeAttribute(
+                  DATABASE_ID,
+                  ORDERS_COLLECTION_ID,
+                  field.name,
+                  field.required
+                );
+              }
+
+              result.details.fieldsAdded.push(field.name);
+              console.log(`✅ Added ${field.name} field successfully`);
+            } catch (addError: any) {
+              result.details.errors.push(`Failed to add ${field.name} field: ${addError.message}`);
+              console.error(`❌ Failed to add ${field.name} field:`, addError);
+            }
+          } else {
+            result.details.errors.push(`Error checking ${field.name} field: ${error.message}`);
+            console.error(`❌ Error checking ${field.name} field:`, error);
+          }
+        }
+      }
+
+      if (result.details.errors.length > 0) {
+        result.success = false;
+        result.message = 'Orders collection migration completed with errors';
+      } else {
+        result.message = 'Orders collection migration completed successfully';
+      }
+
+      return result;
+
+    } catch (error: any) {
+      console.error('💥 Orders collection migration failed:', error);
+      result.success = false;
+      result.message = 'Orders collection migration failed';
+      result.details.errors.push(error.message || 'Unknown error');
+
+      return result;
+    }
+  }
+
+  /**
    * Runs all pending migrations
    */
   static async runAllMigrations(): Promise<MigrationResult> {
@@ -136,7 +265,13 @@ export class DatabaseMigration {
     result.details.fieldsAdded.push(...productsResult.details.fieldsAdded);
     result.details.errors.push(...productsResult.details.errors);
 
-    if (!productsResult.success) {
+    // Run orders collection migration
+    const ordersResult = await this.migrateOrdersCollection();
+
+    result.details.fieldsAdded.push(...ordersResult.details.fieldsAdded);
+    result.details.errors.push(...ordersResult.details.errors);
+
+    if (!productsResult.success || !ordersResult.success) {
       result.success = false;
       result.message = 'Migrations completed with errors';
     }
@@ -156,12 +291,21 @@ export class DatabaseMigration {
       const { databases } = await createAdminClient();
       const missingFields: string[] = [];
 
-      // Check if hasVariations field exists
+      // Check products collection fields
       try {
         await databases.getAttribute(DATABASE_ID, PRODUCTS_COLLECTION_ID, 'hasVariations');
       } catch (error: any) {
         if (error.code === 404) {
-          missingFields.push('hasVariations');
+          missingFields.push('products.hasVariations');
+        }
+      }
+
+      // Check orders collection fields
+      try {
+        await databases.getAttribute(DATABASE_ID, ORDERS_COLLECTION_ID, 'items');
+      } catch (error: any) {
+        if (error.code === 404) {
+          missingFields.push('orders.items');
         }
       }
 

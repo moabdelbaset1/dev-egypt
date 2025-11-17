@@ -76,13 +76,13 @@ export class InventoryTracker {
       // If variant is specified, get variant stock
       if (variantId && product.variants) {
         const variant = product.variants.find((v: any) => v.$id === variantId);
-        const stock = variant ? Number(variant.stock || 0) : 0;
+        const stock = variant ? Number(variant.stock || variant.units || 0) : 0;
         console.log(`📦 Variant stock: ${stock}`);
         return stock;
       }
 
-      // Return main product stock
-      const stock = Number(product.stock || 0);
+      // Return main product stock - use units field
+      const stock = Number(product.units || product.stock || product.stockQuantity || 0);
       console.log(`📦 Product stock: ${stock}`);
       return stock;
     } catch (error) {
@@ -127,20 +127,20 @@ export class InventoryTracker {
         );
         console.log(`✅ [STOCK UPDATE] Updated variant stock. Result:`, JSON.stringify(result, null, 2));
       } else {
-        // Update main product stock
+        // Update main product stock - update UNITS field
         console.log(`📝 [STOCK UPDATE] Updating main product stock...`);
         const before = await this.databases!.getDocument(
           DATABASE_ID,
           PRODUCTS_COLLECTION_ID,
           productId
         );
-        console.log(`📦 [STOCK UPDATE] Current stock:`, before.stock);
+        console.log(`📦 [STOCK UPDATE] Current stock:`, before.units || before.stock);
 
         const result = await this.databases!.updateDocument(
           DATABASE_ID,
           PRODUCTS_COLLECTION_ID,
           productId,
-          { stock: newStock }
+          { units: newStock }
         );
         console.log(`✅ [STOCK UPDATE] Stock update complete. Result:`, JSON.stringify(result, null, 2));
       }

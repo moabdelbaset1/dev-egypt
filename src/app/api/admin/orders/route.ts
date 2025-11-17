@@ -185,16 +185,18 @@ export async function PATCH(request: NextRequest) {
       processedOrderItems = orderItems.map((item: any, index: number) => {
         console.log(`Processing item ${index + 1}:`, item);
 
-        if (!item.product_id && !item.id) {
-          throw new Error(`Item at index ${index} is missing product_id`);
+        // Handle both productId (camelCase) and product_id (snake_case)
+        const productId = item.productId || item.product_id || item.id;
+        if (!productId) {
+          throw new Error(`Item at index ${index} is missing product_id/productId`);
         }
 
         const processedItem = {
           order_id: orderId,
-          product_id: item.product_id || item.id,
+          product_id: productId,
           quantity: Number(item.quantity) || 1,
-          product_name: item.product_name || item.title || 'Unknown Product',
-          title: item.title,
+          product_name: item.name || item.product_name || item.title || 'Unknown Product',
+          title: item.name || item.title,
           variant_id: item.variant_id,
           size: item.size,
           color: item.color
@@ -266,10 +268,10 @@ export async function PATCH(request: NextRequest) {
     const validTransitions: Record<string, string[]> = {
       'pending': ['mark_processing', 'mark_shipped', 'mark_delivered', 'mark_cancelled'],
       'processing': ['mark_shipped', 'mark_delivered', 'mark_cancelled'],
-      'shipped': ['mark_delivered', 'mark_returned'],
-      'delivered': ['mark_returned'],
-      'cancelled': [],
-      'returned': ['mark_processing'] // Allow reprocessing returned orders
+      'shipped': ['mark_delivered', 'mark_returned', 'mark_cancelled'],
+      'delivered': ['mark_returned', 'mark_cancelled'], // Can cancel delivered orders (e.g., customer complaint)
+      'cancelled': [], // Cannot change from cancelled
+      'returned': ['mark_processing', 'mark_cancelled'] // Can reprocess or permanently cancel returned orders
     };
     
     // Check if status transition is valid
