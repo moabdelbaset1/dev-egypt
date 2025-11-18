@@ -194,6 +194,7 @@ export async function PATCH(request: NextRequest) {
         const processedItem = {
           order_id: orderId,
           product_id: productId,
+          productId: productId, // Add both formats for compatibility
           quantity: Number(item.quantity) || 1,
           product_name: item.name || item.product_name || item.title || 'Unknown Product',
           title: item.name || item.title,
@@ -294,20 +295,42 @@ export async function PATCH(request: NextRequest) {
       console.log('✅ Order updated successfully');
 
       // 7. Handle inventory updates based on status change
-      try {
-        if (action === 'mark_delivered') {
-          console.log('📦 Processing inventory deduction for delivery...');
+      console.log(`\n🔍 Checking inventory action for: ${action}`);
+      console.log(`📦 Processed items:`, JSON.stringify(processedOrderItems, null, 2));
+      
+      if (action === 'mark_delivered') {
+        console.log('🚀 ACTION: mark_delivered - Starting inventory deduction...');
+        try {
           await InventoryService.finalizeOrderDelivery(processedOrderItems, orderId);
-          console.log('✅ Inventory updated for delivery');
-        } else if (action === 'mark_returned') {
-          console.log('🔄 Processing inventory addition for return...');
-          await InventoryService.processOrderReturn(processedOrderItems, orderId);
-          console.log('✅ Inventory updated for return');
+          console.log('✅ SUCCESS: Inventory deducted for delivery');
+        } catch (inventoryError) {
+          console.error('❌ CRITICAL ERROR: Failed to update inventory for delivery:', inventoryError);
+          console.error('Error details:', inventoryError instanceof Error ? inventoryError.stack : inventoryError);
+          // Return error to client so they know inventory wasn't updated
+          return NextResponse.json({
+            success: false,
+            error: 'Order status updated but inventory deduction failed: ' + (inventoryError instanceof Error ? inventoryError.message : 'Unknown error'),
+            order: updatedOrder,
+            inventoryError: true
+          }, { status: 500 });
         }
-      } catch (inventoryError) {
-        console.error('❌ Failed to update inventory:', inventoryError);
-        // Don't fail the entire request if inventory update fails
-        // Log it but continue with the response
+      } else if (action === 'mark_returned') {
+        console.log('🔄 ACTION: mark_returned - Starting inventory addition...');
+        try {
+          await InventoryService.processOrderReturn(processedOrderItems, orderId);
+          console.log('✅ SUCCESS: Inventory added for return');
+        } catch (inventoryError) {
+          console.error('❌ CRITICAL ERROR: Failed to update inventory for return:', inventoryError);
+          console.error('Error details:', inventoryError instanceof Error ? inventoryError.stack : inventoryError);
+          return NextResponse.json({
+            success: false,
+            error: 'Order status updated but inventory addition failed: ' + (inventoryError instanceof Error ? inventoryError.message : 'Unknown error'),
+            order: updatedOrder,
+            inventoryError: true
+          }, { status: 500 });
+        }
+      } else {
+        console.log(`ℹ️ No inventory action needed for: ${action}`);
       }
 
       return NextResponse.json({

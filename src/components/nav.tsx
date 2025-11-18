@@ -6,6 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import SearchBar from './SearchBar';
+import { useCurrency, EXCHANGE_RATES, CURRENCY_SYMBOLS } from '../context/CurrencyContext';
+import { Globe } from 'lucide-react';
 
 interface Brand {
   id: string;
@@ -19,6 +21,8 @@ const Nav: React.FC = () => {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [isBrandsOpen, setIsBrandsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
+  const { currency, setCurrency } = useCurrency();
 
   // Fetch brands for navigation
   useEffect(() => {
@@ -146,6 +150,53 @@ const Nav: React.FC = () => {
             <Link href="/contact" className="text-gray-700 hover:text-blue-600 transition-colors">
               Contact
             </Link>
+
+            {/* Currency Selector */}
+            <div className="relative">
+              <button
+                onClick={() => setIsCurrencyOpen(!isCurrencyOpen)}
+                className="flex items-center gap-2 text-gray-700 hover:text-blue-600 transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
+              >
+                <Globe className="h-4 w-4" />
+                <span className="font-medium">{currency}</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Currency Dropdown */}
+              {isCurrencyOpen && (
+                <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-50">
+                  <div className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide border-b">
+                    Select Currency
+                  </div>
+                  {Object.keys(EXCHANGE_RATES).map((curr) => (
+                    <button
+                      key={curr}
+                      onClick={() => {
+                        setCurrency(curr);
+                        setIsCurrencyOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors flex items-center justify-between ${
+                        currency === curr ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium">{curr}</span>
+                        <span className="text-xs text-gray-500">
+                          {CURRENCY_SYMBOLS[curr]}
+                        </span>
+                      </span>
+                      {currency === curr && (
+                        <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* User Actions */}
@@ -268,11 +319,14 @@ const Nav: React.FC = () => {
         )}
       </div>
 
-      {/* Click outside to close dropdown */}
-      {isBrandsOpen && (
+      {/* Click outside to close dropdowns */}
+      {(isBrandsOpen || isCurrencyOpen) && (
         <div
           className="fixed inset-0 z-40"
-          onClick={() => setIsBrandsOpen(false)}
+          onClick={() => {
+            setIsBrandsOpen(false);
+            setIsCurrencyOpen(false);
+          }}
         />
       )}
     </nav>

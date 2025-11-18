@@ -8,6 +8,7 @@ import { ProductColor, ProductVariation } from '@/lib/product-variation-service'
 import { UploadResult } from '@/lib/image-service';
 import LazyImage from '@/components/ui/LazyImage';
 import { useWishlist } from '@/hooks/useWishlist';
+import { useCurrency } from '@/context/CurrencyContext';
 import { Heart } from 'lucide-react';
 
 export interface ProductCardProps {
@@ -69,6 +70,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const frontImageRef = useRef<HTMLImageElement>(null);
   const backImageRef = useRef<HTMLImageElement>(null);
   const router = useRouter();
+  const { formatPrice } = useCurrency();
 
   // Use wishlist functionality
   const { isInWishlist, toggleWishlist, wishlist } = useWishlist(true);
@@ -335,12 +337,12 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
 
-          {/* Price Overlay */}
+          {/* Price Overlay with Currency */}
           <div className="absolute top-3 left-3 bg-white bg-opacity-95 px-3 py-2 rounded-lg text-sm font-medium shadow-sm border border-gray-200">
-            <span className="text-[#173a6a] font-semibold">${product.price}</span>
+            <span className="text-[#173a6a] font-semibold">{formatPrice(product.price)}</span>
             {product.compareAtPrice && (
               <span className="text-gray-500 line-through ml-2 text-xs">
-                ${product.compareAtPrice}
+                {formatPrice(product.compareAtPrice)}
               </span>
             )}
           </div>

@@ -4,6 +4,7 @@ import "./globals.css";
 import "../styles/product-card-animations.css";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../context/CartContext";
+import { CurrencyProvider } from "../context/CurrencyContext";
 import { LocationProvider } from "../contexts/LocationContext";
 import { ReactQueryProvider } from "../lib/react-query-provider";
 import { usePerformanceMonitoring } from "../lib/performance-optimization-service";
@@ -37,13 +38,15 @@ export default function RootLayout({
       <body className={`${roboto.variable} antialiased`}>
         <ReactQueryProvider>
           <AuthProvider>
-            <LocationProvider>
-              <CartProvider>
-                <MarketingPopupProvider>
-                  {children}
-                </MarketingPopupProvider>
-              </CartProvider>
-            </LocationProvider>
+            <CurrencyProvider>
+              <LocationProvider>
+                <CartProvider>
+                  <MarketingPopupProvider>
+                    {children}
+                  </MarketingPopupProvider>
+                </CartProvider>
+              </LocationProvider>
+            </CurrencyProvider>
           </AuthProvider>
         </ReactQueryProvider>
       </body>

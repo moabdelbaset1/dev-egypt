@@ -13,7 +13,7 @@ export default function Home() {
       image: '/images/brands/hero-omaima.jpg',
       color: 'from-blue-600 to-blue-800',
       categories: ['Uniforms', 'Medical Scrubs', 'Formal Wear'],
-      link: '/omaima'
+      link: '/brand/omaima'
     },
     {
       id: 'hleo',
@@ -23,7 +23,7 @@ export default function Home() {
       image: '/images/brands/T6_img3_ShopCategories_Jumpsuit_desk_asset.webp',
       color: 'from-red-600 to-red-800',
       categories: ['Hoodies', 'Oversized Tees', 'Joggers'],
-      link: '/hleo'
+      link: '/brand/hleo'
     },
     {
       id: 'seen',
@@ -33,7 +33,7 @@ export default function Home() {
       image: '/images/brands/T6_img4_ShopCategories_Jackets_desk_asset.webp',
       color: 'from-slate-700 to-slate-900',
       categories: ['Slim Shirts', 'Fitted Pants', 'Blazers'],
-      link: '/seen'
+      link: '/brand/seen'
     }
   ];
 
@@ -71,40 +71,40 @@ export default function Home() {
               {/* Three Brands Display */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-12">
                 {/* OMAIMA Brand */}
-                <Link href="/omaima" className="group bg-white/10 backdrop-blur-md hover:bg-white/20 rounded-2xl p-8 border border-white/20 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl">
-                  <div className="text-center">
-                    <h3 className="text-3xl font-bold mb-3 text-white group-hover:text-blue-400 transition-colors">
-                      OMAIMA
-                    </h3>
-                    <div className="w-16 h-1 bg-gradient-to-r from-blue-400 to-blue-600 mx-auto mb-4 rounded-full"></div>
-                    <p className="text-lg text-gray-200 mb-2">Professional Medical Wear</p>
-                    <p className="text-sm text-gray-300">Premium uniforms for healthcare professionals</p>
-                  </div>
-                </Link>
+                <Link href="/brand/omaima" className="group bg-white/10 backdrop-blur-md hover:bg-white/20 rounded-2xl p-8 border border-white/20 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl">
+                   <div className="text-center">
+                     <h3 className="text-3xl font-bold mb-3 text-white group-hover:text-blue-400 transition-colors">
+                       OMAIMA
+                     </h3>
+                     <div className="w-16 h-1 bg-gradient-to-r from-blue-400 to-blue-600 mx-auto mb-4 rounded-full"></div>
+                     <p className="text-lg text-gray-200 mb-2">Professional Medical Wear</p>
+                     <p className="text-sm text-gray-300">Premium uniforms for healthcare professionals</p>
+                   </div>
+                 </Link>
 
-                {/* H LEO Brand */}
-                <Link href="/hleo" className="group bg-white/10 backdrop-blur-md hover:bg-white/20 rounded-2xl p-8 border border-white/20 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl">
-                  <div className="text-center">
-                    <h3 className="text-3xl font-bold mb-3 text-white group-hover:text-red-400 transition-colors">
-                      H LEO
-                    </h3>
-                    <div className="w-16 h-1 bg-gradient-to-r from-red-400 to-red-600 mx-auto mb-4 rounded-full"></div>
-                    <p className="text-lg text-gray-200 mb-2">Oversized Comfort</p>
-                    <p className="text-sm text-gray-300">Modern oversized fashion that moves with you</p>
-                  </div>
-                </Link>
+                 {/* H LEO Brand */}
+                 <Link href="/brand/hleo" className="group bg-white/10 backdrop-blur-md hover:bg-white/20 rounded-2xl p-8 border border-white/20 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl">
+                   <div className="text-center">
+                     <h3 className="text-3xl font-bold mb-3 text-white group-hover:text-red-400 transition-colors">
+                       H LEO
+                     </h3>
+                     <div className="w-16 h-1 bg-gradient-to-r from-red-400 to-red-600 mx-auto mb-4 rounded-full"></div>
+                     <p className="text-lg text-gray-200 mb-2">Oversized Comfort</p>
+                     <p className="text-sm text-gray-300">Modern oversized fashion that moves with you</p>
+                   </div>
+                 </Link>
 
-                {/* SEEN Brand */}
-                <Link href="/seen" className="group bg-white/10 backdrop-blur-md hover:bg-white/20 rounded-2xl p-8 border border-white/20 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl">
-                  <div className="text-center">
-                    <h3 className="text-3xl font-bold mb-3 text-white group-hover:text-gray-300 transition-colors">
-                      SEEN
-                    </h3>
-                    <div className="w-16 h-1 bg-gradient-to-r from-gray-400 to-gray-600 mx-auto mb-4 rounded-full"></div>
-                    <p className="text-lg text-gray-200 mb-2">Slim Fit Elegance</p>
-                    <p className="text-sm text-gray-300">Tailored perfection for the modern gentleman</p>
-                  </div>
-                </Link>
+                 {/* SEEN Brand */}
+                 <Link href="/brand/seen" className="group bg-white/10 backdrop-blur-md hover:bg-white/20 rounded-2xl p-8 border border-white/20 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl">
+                   <div className="text-center">
+                     <h3 className="text-3xl font-bold mb-3 text-white group-hover:text-gray-300 transition-colors">
+                       SEEN
+                     </h3>
+                     <div className="w-16 h-1 bg-gradient-to-r from-gray-400 to-gray-600 mx-auto mb-4 rounded-full"></div>
+                     <p className="text-lg text-gray-200 mb-2">Slim Fit Elegance</p>
+                     <p className="text-sm text-gray-300">Tailored perfection for the modern gentleman</p>
+                   </div>
+                 </Link>
               </div>
 
               {/* CTA Buttons */}

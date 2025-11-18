@@ -1,7 +1,8 @@
 // Brand Landing Page Generator Service
 // This service handles the creation and management of brand landing pages
 
-import { ID, Databases } from 'appwrite';
+import { Databases } from 'node-appwrite';
+import { ID } from 'appwrite';
 
 // Types for brand landing pages
 export interface LandingPageSection {

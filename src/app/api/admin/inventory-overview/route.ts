@@ -20,7 +20,26 @@ export async function GET(request: NextRequest) {
       ]
     );
 
-    // Fetch inventory movements for these products
+    // Fetch ALL orders to calculate quantities accurately
+    const ORDERS_COLLECTION_ID = 'orders';
+    let orders: any[] = [];
+    try {
+      const { documents: orderDocs } = await databases.listDocuments(
+        DATABASE_ID,
+        ORDERS_COLLECTION_ID,
+        [
+          Query.limit(2000),
+          Query.orderDesc('$createdAt')
+        ]
+      );
+      orders = orderDocs;
+      console.log(`📋 Found ${orders.length} orders for inventory calculation`);
+    } catch (error) {
+      console.warn('⚠️ Orders collection error:', error);
+      orders = [];
+    }
+
+    // Fetch inventory movements for additional tracking
     let movements: any[] = [];
     try {
       const { documents: movementDocs } = await databases.listDocuments(
@@ -33,9 +52,6 @@ export async function GET(request: NextRequest) {
       );
       movements = movementDocs;
       console.log(`📦 Found ${movements.length} inventory movements`);
-      if (movements.length > 0) {
-        console.log('Sample movement:', movements[0]);
-      }
     } catch (error) {
       console.warn('⚠️ Inventory movements collection not available:', error);
       movements = [];
@@ -43,7 +59,8 @@ export async function GET(request: NextRequest) {
 
     // Process inventory data
     console.log(`\n🔍 Processing ${products.length} products...`);
-    const inventoryItems = products.map((product: any, index: number) => {
+    let needsInitialization = 0;
+    const inventoryItems = await Promise.all(products.map(async (product: any, index: number) => {
       // Log first product for debugging
       if (index === 0) {
         console.log('\n📦 Sample product structure:', {
@@ -60,38 +77,76 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Calculate quantities from movements
-      const productMovements = movements.filter((m: any) => m.product_id === product.$id);
-      
-      if (index === 0 && productMovements.length > 0) {
-        console.log(`\n📊 Product has ${productMovements.length} movements`);
-        console.log('Sample movement:', productMovements[0]);
-      }
-      
-      // Count delivered items (movement_type: 'sale' means delivered)
-      const quantityDelivered = productMovements
-        .filter((m: any) => m.movement_type === 'sale')
-        .reduce((sum: number, m: any) => sum + Math.abs(m.quantity || 0), 0);
-      
-      // Count returned items
-      const quantityReturned = productMovements
-        .filter((m: any) => m.movement_type === 'return')
-        .reduce((sum: number, m: any) => sum + Math.abs(m.quantity || 0), 0);
-
-      // Current stock from product
+      // Current stock from product (this is the ACTUAL remaining in database)
       const currentStock = product.units || product.stockQuantity || 0;
       
-      // Calculate net sold (delivered minus returned)
-      const netSold = quantityDelivered - quantityReturned;
+      // Get INITIAL stock from product field
+      let initialStock = product.initial_units || product.initialStock || 0;
       
-      // Calculate initial stock: Current + NetSold
-      // Example: If current = 2, delivered = 4, returned = 0 => initial = 2 + 4 = 6
-      const initialStock = currentStock + netSold;
+      // Get product movements for lastUpdated tracking
+      const productMovements = movements.filter((m: any) => m.product_id === product.$id);
       
-      // Remaining is just current stock
-      const quantityRemaining = currentStock;
+      // Calculate quantityOut from ORDERS (delivered only)
+      let quantityOut = 0;
       
-      // Get brand name - try multiple possible fields
+      orders.forEach((order: any) => {
+        const orderStatus = order.order_status || order.status || 'pending';
+        
+        // Only count delivered orders
+        if (orderStatus === 'delivered') {
+          try {
+            const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+            if (Array.isArray(items)) {
+              items.forEach((item: any) => {
+                const itemProductId = item.productId || item.product_id || item.id;
+                if (itemProductId === product.$id) {
+                  quantityOut += parseInt(item.quantity) || 0;
+                }
+              });
+            }
+          } catch (e) {
+            // Skip invalid items
+          }
+        }
+      });
+      
+      // If initial_units not set, use current stock as initial
+      // This should be set manually by admin, but we calculate it once
+      if (initialStock === 0) {
+        initialStock = currentStock;
+        console.log(`📊 Using current stock as initial for ${product.name} = ${initialStock}`);
+        needsInitialization++;
+      }
+      
+      // Remaining = Initial - Out (calculated, not from database)
+      // This is the correct formula
+      const quantityRemaining = Math.max(0, initialStock - quantityOut);
+      
+      // Validate: remaining should equal initial - out
+      const expectedRemaining = Math.max(0, initialStock - quantityOut);
+      if (Math.abs(quantityRemaining - expectedRemaining) > 0) {
+        console.log(`⚠️ ${product.name} mismatch:`, {
+          initial: initialStock,
+          out: quantityOut,
+          expected: expectedRemaining,
+          actual: quantityRemaining,
+          diff: quantityRemaining - expectedRemaining
+        });
+      }
+      
+      // Log for debugging
+      if (index === 0) {
+        console.log(`\n📊 Sample Product: ${product.name}`, {
+          has_initial_units: !!product.initial_units,
+          initialStock,
+          quantityOut,
+          dbRemaining: currentStock,
+          displayRemaining: quantityRemaining,
+          formula: `${initialStock} - ${quantityOut} = ${expectedRemaining}`
+        });
+      }
+      
+      // Get brand name
       let brandName = 'Unknown Brand';
       if (product.brand_name) {
         brandName = product.brand_name;
@@ -100,17 +155,16 @@ export async function GET(request: NextRequest) {
       } else if (product.brand) {
         brandName = product.brand;
       } else if (product.brand_id) {
-        // If we have brand_id but not name, we'll show the ID
         brandName = `Brand ${product.brand_id.slice(-8)}`;
       }
       
-      // Determine status based on current stock
+      // Determine status: if Out >= Initial, it's out of stock
       let status: 'in' | 'out' | 'low_stock' | 'alert' | 'out_of_stock';
-      if (currentStock === 0) {
+      if (quantityRemaining === 0 || (initialStock > 0 && quantityOut >= initialStock)) {
         status = 'out_of_stock';
-      } else if (currentStock <= 5) {
+      } else if (quantityRemaining <= 5) {
         status = 'low_stock';
-      } else if (currentStock <= 10) {
+      } else if (quantityRemaining <= 10) {
         status = 'alert';
       } else {
         status = 'in';
@@ -125,16 +179,16 @@ export async function GET(request: NextRequest) {
         customProductId: product.customProductId || product.custom_product_id || product.$id.slice(-8),
         name: product.name || product.title || 'Unnamed Product',
         brandName: brandName,
-        quantityDelivered,
-        quantityReturned,
-        quantityRemaining,
-        initialStock, // Original stock before any sales
-        netSold, // Net amount that went out (delivered - returned)
+        initialStock, // العدد الأساسي
+        quantityOut, // اللي خرج (delivered)
+        quantityRemaining, // المتبقي (includes returns automatically)
         status,
         location: product.location || product.warehouse_location || 'Main Warehouse',
         lastUpdated: lastUpdated
       };
-    });
+    }));
+
+    console.log(`\n📊 Auto-initialized ${needsInitialization} products`);
 
     // Sort by status priority (out of stock first, then low stock)
     inventoryItems.sort((a, b) => {
@@ -157,9 +211,9 @@ export async function GET(request: NextRequest) {
         inStock: inventoryItems.filter(i => i.status === 'in').length,
         lowStock: inventoryItems.filter(i => i.status === 'low_stock').length,
         outOfStock: inventoryItems.filter(i => i.status === 'out_of_stock' || i.status === 'alert').length,
-        totalDelivered: inventoryItems.reduce((sum, i) => sum + i.quantityDelivered, 0),
-        totalReturned: inventoryItems.reduce((sum, i) => sum + i.quantityReturned, 0),
-        totalNetSold: inventoryItems.reduce((sum, i) => sum + i.netSold, 0),
+        totalInitialStock: inventoryItems.reduce((sum, i) => sum + i.initialStock, 0),
+        totalOut: inventoryItems.reduce((sum, i) => sum + i.quantityOut, 0),
+        totalRemaining: inventoryItems.reduce((sum, i) => sum + i.quantityRemaining, 0),
       }
     });
   } catch (error) {

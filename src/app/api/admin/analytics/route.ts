@@ -57,7 +57,8 @@ export async function GET(request: NextRequest) {
     orders.forEach(order => {
       if (order.payment_status === 'paid') {
         const date = new Date(order.$createdAt).toISOString().split('T')[0]
-        revenueByDay[date] = (revenueByDay[date] || 0) + (order.total || 0)
+        const orderTotal = order.total_amount || order.total || 0
+        revenueByDay[date] = (revenueByDay[date] || 0) + orderTotal
         ordersByDay[date] = (ordersByDay[date] || 0) + 1
       }
     })
@@ -114,14 +115,21 @@ export async function GET(request: NextRequest) {
       return registrationDate >= fromDate && registrationDate <= toDate
     }).length
 
-    // Order status distribution
+    // Order status distribution - handle both status and order_status fields
     const orderStatusDistribution = {
-      pending: orders.filter(o => o.status === 'pending').length,
-      processing: orders.filter(o => o.status === 'processing').length,
-      shipped: orders.filter(o => o.status === 'shipped').length,
-      delivered: orders.filter(o => o.status === 'delivered').length,
-      cancelled: orders.filter(o => o.status === 'cancelled').length,
+      pending: orders.filter(o => (o.status || o.order_status) === 'pending').length,
+      processing: orders.filter(o => (o.status || o.order_status) === 'processing').length,
+      shipped: orders.filter(o => (o.status || o.order_status) === 'shipped').length,
+      delivered: orders.filter(o => (o.status || o.order_status) === 'delivered').length,
+      cancelled: orders.filter(o => (o.status || o.order_status) === 'cancelled').length,
     }
+
+    console.log('📊 Order Status Distribution:', orderStatusDistribution)
+    console.log('📊 Sample order statuses:', orders.slice(0, 5).map(o => ({
+      id: o.$id.slice(-8),
+      status: o.status,
+      order_status: o.order_status
+    })))
 
     // Payment method distribution
     const paymentMethods: { [key: string]: number } = {}
@@ -133,7 +141,7 @@ export async function GET(request: NextRequest) {
     // Calculate metrics for the period
     const totalRevenue = orders
       .filter(order => order.payment_status === 'paid')
-      .reduce((sum, order) => sum + (order.total || 0), 0)
+      .reduce((sum, order) => sum + (order.total_amount || order.total || 0), 0)
 
     const totalOrders = orders.length
     const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
@@ -145,7 +153,8 @@ export async function GET(request: NextRequest) {
     orders.forEach(order => {
       if (order.customer_id && order.payment_status === 'paid') {
         customerOrderCounts[order.customer_id] = (customerOrderCounts[order.customer_id] || 0) + 1
-        customerRevenueMap[order.customer_id] = (customerRevenueMap[order.customer_id] || 0) + (order.total || 0)
+        const orderTotal = order.total_amount || order.total || 0
+        customerRevenueMap[order.customer_id] = (customerRevenueMap[order.customer_id] || 0) + orderTotal
       }
     })
 

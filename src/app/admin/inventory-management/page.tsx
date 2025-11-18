@@ -24,17 +24,12 @@ interface ProductInventory {
   brandName: string;
   
   // Stock levels
-  initialStock: number;          // العدد الأساسي قبل أي مبيعات
+  initialStock: number;          // العدد الأساسي
   currentStock: number;          // المتبقي حالياً
   
   // Order quantities
   quantityInProcessing: number;  // في طلبات قيد المعالجة
-  quantityDelivered: number;     // تم تسليمها (خرج)
-  quantityReturned: number;      // تم إرجاعها (رجع)
-  
-  // Calculated
-  totalOrdered: number;          // Total in all orders
-  netSold: number;              // Delivered - Returned
+  quantityOut: number;           // اللي خرج (delivered)
   
   // Status
   status: 'in_stock' | 'low_stock' | 'out_of_stock';
@@ -46,137 +41,111 @@ export default function InventoryManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [initializingStock, setInitializingStock] = useState(false);
 
   useEffect(() => {
     fetchInventoryData();
   }, []);
 
+  const initializeInventory = async () => {
+    if (!confirm('This will set initial_units for all products based on their current stock. Continue?')) {
+      return;
+    }
+
+    try {
+      setInitializingStock(true);
+      const res = await fetch('/api/admin/init-inventory', {
+        method: 'POST'
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        alert(`Successfully initialized ${data.summary.updated} products!\nSkipped: ${data.summary.skipped}\nErrors: ${data.summary.errors}`);
+        // Refresh data after initialization
+        fetchInventoryData();
+      } else {
+        alert('Failed to initialize inventory: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Error initializing inventory:', error);
+      alert('Error initializing inventory');
+    } finally {
+      setInitializingStock(false);
+    }
+  };
+
   const fetchInventoryData = async () => {
     try {
       setLoading(true);
       
-      // 1. Fetch all products
-      const productsRes = await fetch('/api/admin/products?limit=1000');
-      const productsData = await productsRes.json();
-      const allProducts = productsData.products || [];
+      // Use the Inventory Overview API that already has correct calculations
+      const inventoryRes = await fetch('/api/admin/inventory-overview?limit=1000');
+      const inventoryData = await inventoryRes.json();
       
-      console.log(`📦 Fetched ${allProducts.length} products`);
-      if (allProducts.length > 0) {
-        console.log('Sample product:', allProducts[0]);
+      if (!inventoryData.success) {
+        throw new Error('Failed to fetch inventory data');
+      }
+      
+      const apiItems = inventoryData.items || [];
+      console.log(`📦 Fetched ${apiItems.length} inventory items from API`);
+      
+      if (apiItems.length > 0) {
+        console.log('Sample item from API:', apiItems[0]);
       }
 
-      // 2. Try to fetch brands (optional)
-      const brandMap: Record<string, string> = {};
-      try {
-        const brandsRes = await fetch('/api/brands?limit=1000');
-        if (brandsRes.ok) {
-          const brandsData = await brandsRes.json();
-          const allBrands = brandsData.brands || [];
-          allBrands.forEach((brand: any) => {
-            brandMap[brand.$id] = brand.name || brand.brand_name || 'Unknown Brand';
-          });
-          console.log(`🏷️ Fetched ${allBrands.length} brands`);
-        }
-      } catch (error) {
-        console.log('Brands API not available, will use brand names from products');
-      }
-
-      // 3. Fetch all orders
+      // Fetch all orders to get in-processing quantities
       const ordersRes = await fetch('/api/admin/orders?limit=1000');
       const ordersData = await ordersRes.json();
       const allOrders = ordersData.orders || [];
       
-      console.log(`📋 Fetched ${allOrders.length} orders`);
+      console.log(`📋 Fetched ${allOrders.length} orders for processing status`);
 
-      // 3. Process each product
-      const inventory: ProductInventory[] = allProducts.map((product: any) => {
-        const productId = product.$id;
+      // Map to our interface
+      const inventory: ProductInventory[] = apiItems.map((item: any) => {
+        const productId = item.id;
         
-        // CRITICAL: product.units is automatically updated by InventoryTracker
-        // It's the ACTUAL REMAINING stock after all deliveries and returns
-        const remainingStock = product.units || product.stockQuantity || 0;
-        
-        // Find all orders containing this product
+        // Find all processing orders for this product
         let quantityInProcessing = 0;
-        let quantityDelivered = 0;
-        let quantityReturned = 0;
-
+        
         allOrders.forEach((order: any) => {
-          try {
-            const items = JSON.parse(order.items || '[]');
-            const orderStatus = order.order_status || order.status || 'pending';
-            
-            items.forEach((item: any) => {
-              const itemProductId = item.productId || item.product_id || item.id;
-              
-              if (itemProductId === productId) {
-                const qty = parseInt(item.quantity) || 0;
-                
-                // Categorize based on order status
-                if (['pending', 'processing', 'shipped'].includes(orderStatus)) {
-                  quantityInProcessing += qty;
-                } else if (orderStatus === 'delivered') {
-                  quantityDelivered += qty;
-                } else if (orderStatus === 'returned') {
-                  quantityReturned += qty;
+          const orderStatus = order.order_status || order.status || 'pending';
+          if (['pending', 'processing', 'shipped'].includes(orderStatus)) {
+            try {
+              const items = JSON.parse(order.items || '[]');
+              items.forEach((orderItem: any) => {
+                const itemProductId = orderItem.productId || orderItem.product_id || orderItem.id;
+                if (itemProductId === productId) {
+                  quantityInProcessing += parseInt(orderItem.quantity) || 0;
                 }
-              }
-            });
-          } catch (e) {
-            // Skip invalid items
+              });
+            } catch (e) {
+              // Skip invalid items
+            }
           }
         });
 
-        const totalOrdered = quantityInProcessing + quantityDelivered;
-        
-        // Calculate NET sold (delivered minus returned)
-        const netSold = quantityDelivered - quantityReturned;
-        
-        // Calculate INITIAL stock (what we had originally)
-        // Formula: Initial = Remaining + (Delivered - Returned)
-        // Example: Remaining: 1, Delivered: 4, Returned: 0 => Initial = 1 + 4 = 5
-        // Example: Remaining: 5, Delivered: 4, Returned: 4 => Initial = 5 + 0 = 5
-        const initialStock = remainingStock + netSold;
-
-        // Determine status based on remaining stock (from database)
+        // Determine status based on remaining stock
         let status: 'in_stock' | 'low_stock' | 'out_of_stock';
-        if (remainingStock <= 0) {
+        if (item.quantityRemaining <= 0) {
           status = 'out_of_stock';
-        } else if (remainingStock <= 5) {
+        } else if (item.quantityRemaining <= 5) {
           status = 'low_stock';
         } else {
           status = 'in_stock';
         }
 
-        // Get brand name - check multiple fields and lookup from brand map
-        let brandName = 'Unknown Brand';
-        
-        if (product.brand_name) {
-          brandName = product.brand_name;
-        } else if (product.brandName) {
-          brandName = product.brandName;
-        } else if (product.brand) {
-          brandName = product.brand;
-        } else if (product.brand_id && brandMap[product.brand_id]) {
-          brandName = brandMap[product.brand_id];
-        } else if (product.brand_id) {
-          brandName = `Brand ID: ${product.brand_id.slice(-8)}`;
-        }
-
         return {
-          productId,
-          customProductId: product.customProductId || product.custom_product_id || productId.slice(-8),
-          productName: product.name || product.title || 'Unnamed Product',
-          brandName,
-          initialStock,        // العدد الأساسي (محسوب)
-          currentStock: remainingStock,  // المتبقي (من database - بيتحدث تلقائياً)
+          productId: item.id,
+          customProductId: item.customProductId,
+          productName: item.name,
+          brandName: item.brandName,
+          initialStock: item.initialStock,      // من الـ API
+          currentStock: item.quantityRemaining, // من الـ API
           quantityInProcessing,
-          quantityDelivered,
-          quantityReturned,
-          totalOrdered,
-          netSold,
+          quantityOut: item.quantityOut,        // من الـ API
           status,
-          lastUpdated: product.$updatedAt
+          lastUpdated: item.lastUpdated
         };
       });
 
@@ -191,7 +160,21 @@ export default function InventoryManagementPage() {
       });
 
       setProducts(inventory);
-      console.log(`✅ Processed ${inventory.length} products`);
+      console.log(`✅ Processed ${inventory.length} inventory items`);
+      
+      // Show statistics
+      const withSales = inventory.filter(p => p.quantityOut > 0);
+      console.log(`📊 Products with sales: ${withSales.length}`);
+      
+      if (withSales.length > 0) {
+        console.log('📦 Sample product calculation:', {
+          name: withSales[0].productName,
+          initial: withSales[0].initialStock,
+          out: withSales[0].quantityOut,
+          remaining: withSales[0].currentStock,
+          formula: `${withSales[0].initialStock} - ${withSales[0].quantityOut} = ${withSales[0].currentStock} (should match)`
+        });
+      }
       
     } catch (error) {
       console.error('❌ Error fetching inventory:', error);
@@ -219,8 +202,7 @@ export default function InventoryManagementPage() {
     lowStock: products.filter(p => p.status === 'low_stock').length,
     outOfStock: products.filter(p => p.status === 'out_of_stock').length,
     totalInProcessing: products.reduce((sum, p) => sum + p.quantityInProcessing, 0),
-    totalDelivered: products.reduce((sum, p) => sum + p.quantityDelivered, 0),
-    totalReturned: products.reduce((sum, p) => sum + p.quantityReturned, 0),
+    totalOut: products.reduce((sum, p) => sum + p.quantityOut, 0),
   };
 
   if (loading) {
@@ -244,10 +226,30 @@ export default function InventoryManagementPage() {
             Track stock levels, delivered items, and remaining quantities
           </p>
         </div>
-        <Button onClick={fetchInventoryData} variant="outline">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={initializeInventory}
+            variant="default"
+            disabled={initializingStock}
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            {initializingStock ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Initializing...
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4 mr-2" />
+                Initialize Stock
+              </>
+            )}
+          </Button>
+          <Button onClick={fetchInventoryData} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -302,7 +304,7 @@ export default function InventoryManagementPage() {
       </div>
 
       {/* Secondary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="bg-blue-50 border-blue-200">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -315,26 +317,14 @@ export default function InventoryManagementPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-green-50 border-green-200">
+        <Card className="bg-red-50 border-red-200">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-green-700">Delivered</p>
-                <p className="text-2xl font-bold text-green-900">{stats.totalDelivered} pcs</p>
+                <p className="text-sm text-red-700">Total Out (Delivered)</p>
+                <p className="text-2xl font-bold text-red-900">{stats.totalOut} pcs</p>
               </div>
-              <TrendingDown className="h-8 w-8 text-green-400" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-orange-50 border-orange-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-orange-700">Returned</p>
-                <p className="text-2xl font-bold text-orange-900">{stats.totalReturned} pcs</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-orange-400" />
+              <TrendingDown className="h-8 w-8 text-red-400" />
             </div>
           </CardContent>
         </Card>
@@ -404,8 +394,7 @@ export default function InventoryManagementPage() {
                   <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">Product</th>
                   <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">Brand</th>
                   <th className="px-4 py-3 text-center text-sm font-bold text-purple-700">Initial Stock</th>
-                  <th className="px-4 py-3 text-center text-sm font-bold text-green-700">Delivered (Out)</th>
-                  <th className="px-4 py-3 text-center text-sm font-bold text-orange-700">Returned (Back)</th>
+                  <th className="px-4 py-3 text-center text-sm font-bold text-red-700">Out (Delivered)</th>
                   <th className="px-4 py-3 text-center text-sm font-bold text-blue-700">Remaining</th>
                   <th className="px-4 py-3 text-center text-sm font-bold text-gray-700">Status</th>
                 </tr>
@@ -413,7 +402,7 @@ export default function InventoryManagementPage() {
               <tbody className="divide-y divide-gray-200">
                 {filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                    <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
                       <Package className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                       <p>No products found</p>
                     </td>
@@ -449,17 +438,10 @@ export default function InventoryManagementPage() {
                         </div>
                       </td>
 
-                      {/* Delivered */}
+                      {/* Out (Delivered) */}
                       <td className="px-4 py-4 text-center">
-                        <div className="text-2xl font-bold text-green-600">
-                          {product.quantityDelivered || 0}
-                        </div>
-                      </td>
-
-                      {/* Returned */}
-                      <td className="px-4 py-4 text-center">
-                        <div className="text-2xl font-bold text-orange-600">
-                          {product.quantityReturned || 0}
+                        <div className="text-2xl font-bold text-red-600">
+                          {product.quantityOut || 0}
                         </div>
                       </td>
 
@@ -509,24 +491,24 @@ export default function InventoryManagementPage() {
       <Card className="bg-gray-50">
         <CardContent className="p-4">
           <h3 className="font-semibold text-gray-900 mb-3">📖 Column Guide:</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
             <div className="p-2 bg-purple-50 rounded">
-              <span className="font-bold text-purple-700">Initial Stock:</span> Starting quantity
+              <span className="font-bold text-purple-700">Initial Stock:</span> العدد الأساسي
             </div>
-            <div className="p-2 bg-green-50 rounded">
-              <span className="font-bold text-green-700">Delivered:</span> Went out
-            </div>
-            <div className="p-2 bg-orange-50 rounded">
-              <span className="font-bold text-orange-700">Returned:</span> Came back
+            <div className="p-2 bg-red-50 rounded">
+              <span className="font-bold text-red-700">Out:</span> اللي خرج (delivered)
             </div>
             <div className="p-2 bg-blue-50 rounded">
-              <span className="font-bold text-blue-700">Remaining:</span> What's left
+              <span className="font-bold text-blue-700">Remaining:</span> المتبقي
             </div>
           </div>
           
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
             <p className="text-sm text-blue-900">
-              <strong>Formula:</strong> Remaining = Initial - Delivered + Returned
+              <strong>المعادلة:</strong> المتبقي = العدد الأساسي - اللي خرج
+            </p>
+            <p className="text-xs text-blue-700 mt-1">
+              ملحوظة: المرتجعات بتتضاف تلقائياً للمتبقي من النظام
             </p>
           </div>
         </CardContent>

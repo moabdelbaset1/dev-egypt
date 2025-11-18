@@ -22,8 +22,9 @@ interface InventoryItem {
   customProductId: string
   name: string
   brandName: string
-  quantityOut: number
-  quantityRemaining: number
+  initialStock: number // العدد الأساسي
+  quantityOut: number // اللي خرج
+  quantityRemaining: number // المتبقي
   status: 'in' | 'out' | 'low_stock' | 'alert' | 'out_of_stock'
   location?: string
   lastUpdated?: string
@@ -95,10 +96,16 @@ export default function AnalyticsPage() {
   const [period, setPeriod] = useState("30")
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
   const [inventoryLoading, setInventoryLoading] = useState(false)
+  const [brandAnalytics, setBrandAnalytics] = useState<{
+    topViewedBrands: Array<{ brand_id: string; brand_name: string; views: number; growth: number }>
+    topSellingBrands: Array<{ brand_id: string; brand_name: string; orders: number; revenue: number }>
+  } | null>(null)
+  const [brandLoading, setBrandLoading] = useState(false)
 
   useEffect(() => {
     fetchAnalytics()
     fetchInventoryData()
+    fetchBrandAnalytics()
   }, [period])
 
   const fetchAnalytics = async () => {
@@ -129,6 +136,28 @@ export default function AnalyticsPage() {
       console.error('Error fetching inventory data:', error)
     } finally {
       setInventoryLoading(false)
+    }
+  }
+
+  const fetchBrandAnalytics = async () => {
+    try {
+      setBrandLoading(true)
+      const res = await fetch(`/api/admin/brand-analytics?period=${period}`)
+      if (res.ok) {
+        const data = await res.json()
+        setBrandAnalytics({
+          topViewedBrands: data.topViewedBrands || [],
+          topSellingBrands: data.topSellingBrands || []
+        })
+      } else {
+        console.warn('Brand analytics API returned non-ok status')
+        setBrandAnalytics({ topViewedBrands: [], topSellingBrands: [] })
+      }
+    } catch (error) {
+      console.error('Error fetching brand analytics:', error)
+      setBrandAnalytics({ topViewedBrands: [], topSellingBrands: [] })
+    } finally {
+      setBrandLoading(false)
     }
   }
 
@@ -358,13 +387,37 @@ export default function AnalyticsPage() {
                 <CardDescription>Top brands by page views this month</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
+                {brandLoading ? (
+                  <div className="flex justify-center items-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : brandAnalytics?.topViewedBrands && brandAnalytics.topViewedBrands.length > 0 ? (
+                  <div className="space-y-3">
+                    {brandAnalytics.topViewedBrands.map((brand, index) => (
+                      <div key={brand.brand_id} className="flex items-center gap-4 p-3 border rounded-lg hover:bg-gray-50">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold text-sm">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">{brand.brand_name}</h3>
+                          <p className="text-sm text-gray-600">{brand.views} views</p>
+                        </div>
+                        {brand.growth > 0 && (
+                          <div className="flex items-center gap-1 text-green-600 text-sm font-medium">
+                            <TrendingUp className="h-4 w-4" />
+                            +{brand.growth}%
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
                   <div className="text-center py-8 text-gray-500">
                     <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p>Brand view tracking coming soon</p>
-                    <p className="text-sm">Requires analytics integration</p>
+                    <p>No brand view data available</p>
+                    <p className="text-sm">Views will appear as customers browse products</p>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
 
@@ -377,13 +430,35 @@ export default function AnalyticsPage() {
                 <CardDescription>Brands with highest order count</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="text-center py-8 text-gray-500">
-                    <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p>Brand sales tracking coming soon</p>
-                    <p className="text-sm">Requires order-brand correlation</p>
+                {brandLoading ? (
+                  <div className="flex justify-center items-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
                   </div>
-                </div>
+                ) : brandAnalytics?.topSellingBrands && brandAnalytics.topSellingBrands.length > 0 ? (
+                  <div className="space-y-3">
+                    {brandAnalytics.topSellingBrands.map((brand, index) => (
+                      <div key={brand.brand_id} className="flex items-center gap-4 p-3 border rounded-lg hover:bg-gray-50">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-yellow-100 text-yellow-600 font-bold text-sm">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">{brand.brand_name}</h3>
+                          <p className="text-sm text-gray-600">{brand.orders} orders</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-green-600">${brand.revenue.toFixed(2)}</p>
+                          <p className="text-xs text-gray-600">revenue</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Star className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>No brand sales data available</p>
+                    <p className="text-sm">Data will appear when orders are placed</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -466,6 +541,7 @@ export default function AnalyticsPage() {
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product Name</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Initial Stock</th>
                             <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Out</th>
                             <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
@@ -475,7 +551,7 @@ export default function AnalyticsPage() {
                         <tbody className="bg-white divide-y divide-gray-200">
                           {inventoryItems.length === 0 ? (
                             <tr>
-                              <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                              <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
                                 No inventory items found
                               </td>
                             </tr>
@@ -492,6 +568,9 @@ export default function AnalyticsPage() {
                                   <span className="inline-flex px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded">
                                     {item.brandName}
                                   </span>
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap text-center">
+                                  <span className="text-gray-700 font-bold">{item.initialStock}</span>
                                 </td>
                                 <td className="px-4 py-4 whitespace-nowrap text-center">
                                   <span className="text-red-600 font-bold">{item.quantityOut}</span>

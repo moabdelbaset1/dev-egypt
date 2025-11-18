@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { Client, Databases, Storage } from 'appwrite';
 import MainLayout from '../../../components/MainLayout';
 import { useCart } from '../../../context/CartContext';
+import { useCurrency } from '../../../context/CurrencyContext';
 import { Product } from '../../../types/product';
-import { ShoppingCart, Heart, Share2, Star, Check, Truck, Shield, RotateCcw } from 'lucide-react';
+import { ShoppingCart, Heart, Share2, Star, Check, Truck, Shield, RotateCcw, Ruler } from 'lucide-react';
 import Link from 'next/link';
 import CurrencyConverter from '../../../components/CurrencyConverter';
 import ProductErrorBoundary from '../../../components/ui/ProductErrorBoundary';
@@ -17,6 +18,8 @@ import { PageLoadingSpinner, ProgressiveLoader } from '../../../components/ui/Lo
 import ProductImageGallery from '../../../components/ui/ProductImageGallery';
 import ProductVariations, { VariationGroup, VariationOption } from '../../../components/ui/ProductVariations';
 import RelatedProducts from '../../../components/ui/RelatedProducts';
+import MultiVariantSelector from '../../../components/ui/MultiVariantSelector';
+import SizeChartModal from '../../../components/ui/SizeChartModal';
 
 interface Brand {
   $id: string;
@@ -36,6 +39,7 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const slug = params.slug as string;
   const { addToCart, isInCart } = useCart();
+  const { formatPrice } = useCurrency();
 
   // Initialize Appwrite client with debugging
   console.log('🔧 Initializing Appwrite client for product page');
@@ -92,6 +96,7 @@ export default function ProductDetailPage() {
   const [addedToCart, setAddedToCart] = useState(false);
   const [addEmbroidery, setAddEmbroidery] = useState(false);
   const [featuresExpanded, setFeaturesExpanded] = useState(true);
+  const [sizeChartOpen, setSizeChartOpen] = useState(false);
 
   // Fallback static product data
   const staticProduct: Product = {
@@ -322,8 +327,8 @@ export default function ProductDetailPage() {
   };
 
   // Get all product images for gallery with color variation support
-  const getProductImages = (product: any) => {
-    const images: Array<{ src: string; alt: string; color?: string; isMain?: boolean; imageType?: string }> = [];
+  const getProductImages = (product: any): Array<{ src: string; alt: string; color?: string; isMain?: boolean; imageType?: 'main' | 'back' | 'variation' | 'gallery' }> => {
+    const images: Array<{ src: string; alt: string; color?: string; isMain?: boolean; imageType?: 'main' | 'back' | 'variation' | 'gallery' }> = [];
 
     console.log('🖼️ Getting product images:', {
       hasImages: !!product.images,
@@ -402,7 +407,7 @@ export default function ProductDetailPage() {
           alt: img.alt_text || `${product.name} - ${img.image_type} view ${index + 1}`,
           color: colorValue || undefined,
           isMain: img.image_type === 'front' || img.image_type === 'main',
-          imageType: img.image_type
+          imageType: (img.image_type as 'main' | 'back' | 'variation' | 'gallery')
         };
         
         console.log(`🖼️ Image ${index + 1}:`, {
@@ -420,21 +425,21 @@ export default function ProductDetailPage() {
     } else if (isUsingStaticData) {
       // For static products, create images for each color
       const colors = (product as Product).colorOptions?.split(',') || ['Royal', 'Navy', 'Black'];
-      colors.forEach(color => {
+      colors.forEach((color: string) => {
         const trimmedColor = color.trim();
         images.push({
           src: `/figma/product-images/main-product-${trimmedColor.toLowerCase()}.png`,
           alt: `${product.name} - ${trimmedColor} - Main View`,
           color: trimmedColor,
           isMain: true,
-          imageType: 'main'
+          imageType: 'main' as const
         });
         images.push({
           src: `/figma/product-images/main-product-${trimmedColor.toLowerCase()}.png`,
           alt: `${product.name} - ${trimmedColor} - Back View`,
           color: trimmedColor,
           isMain: false,
-          imageType: 'back'
+          imageType: 'back' as const
         });
       });
     } else {
@@ -445,7 +450,7 @@ export default function ProductDetailPage() {
           src: mainImageSrc,
           alt: `${product.name} - main view`,
           isMain: true,
-          imageType: 'main'
+          imageType: 'main' as const
         });
       }
     }
@@ -457,7 +462,7 @@ export default function ProductDetailPage() {
         src: 'https://via.placeholder.com/400x600?text=No+Image+Available',
         alt: `${product.name} - no image available`,
         isMain: true,
-        imageType: 'main'
+        imageType: 'main' as const
       });
     }
 
@@ -542,8 +547,8 @@ export default function ProductDetailPage() {
 
   return (
     <MainLayout>
-      <div className="min-h-screen bg-gray-50 py-8">
-        <div className="max-w-[1920px] mx-auto px-[50px]">
+      <div className="min-h-screen bg-gray-50 py-4 md:py-8">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 md:px-8 lg:px-12 xl:px-[50px]">
           {/* Breadcrumb */}
           <nav className="mb-8 text-sm">
             <ol className="flex items-center space-x-2 text-gray-600">
@@ -561,20 +566,20 @@ export default function ProductDetailPage() {
             </ol>
           </nav>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            {/* Enhanced Product Images */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 lg:gap-12">
+            {/* Enhanced Product Images - Full Width, No Thumbnails */}
             <ProductErrorBoundary>
               <div className="space-y-4">
-                {/* Enhanced Image Gallery */}
-                <div className="bg-white rounded-lg p-4 shadow-lg sticky top-8">
+                {/* Enhanced Image Gallery - Full width image display */}
+                <div className="bg-white rounded-lg p-6 shadow-lg sticky top-8">
                   <ProductImageGallery
                     images={getProductImages(product)}
                     selectedColor={selectedColor}
                     onColorChange={setSelectedColor}
                     className="w-full"
                     priority={true}
-                    showThumbnails={true}
-                    maxThumbnails={8}
+                    showThumbnails={false}
+                    maxThumbnails={0}
                   />
                 </div>
               </div>
@@ -592,26 +597,26 @@ export default function ProductDetailPage() {
               )}
 
               {/* Title */}
-              <h1 className="text-4xl font-bold text-gray-900">{product.name}</h1>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">{product.name}</h1>
 
-              {/* Price */}
+              {/* Price with Currency Conversion */}
               <div className="border-t border-b py-6">
-                <div className="flex items-baseline gap-4">
-                  <span className="text-4xl font-bold text-[#173a6a]">
-                    ${currentPrice.toFixed(2)}
+                <div className="flex flex-wrap items-baseline gap-3 md:gap-4">
+                  <span className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#173a6a]">
+                    {formatPrice(currentPrice)}
                   </span>
                   {isUsingStaticData ? (
-                    <span className="text-2xl text-gray-500 line-through">
-                      ${(product as Product).price * 1.2}
+                    <span className="text-xl sm:text-2xl text-gray-500 line-through">
+                      {formatPrice((product as Product).price * 1.2)}
                     </span>
                   ) : (
                     savings > 0 && (
                       <>
-                        <span className="text-2xl text-gray-500 line-through">
-                          ${product.price.toFixed(2)}
+                        <span className="text-xl sm:text-2xl text-gray-500 line-through">
+                          {formatPrice(product.price)}
                         </span>
-                        <span className="text-lg font-medium text-red-600">
-                          Save ${savings.toFixed(2)}
+                        <span className="text-base sm:text-lg font-medium text-red-600">
+                          Save {formatPrice(savings)}
                         </span>
                       </>
                     )
@@ -622,69 +627,75 @@ export default function ProductDetailPage() {
               {/* Enhanced Product Variations - Dynamic */}
               <ProductErrorBoundary>
                 <div className="space-y-6">
-                  {/* Color Selection - Dynamic from product data */}
+                  {/* Enhanced Color Selection with Product Images */}
                   {(!isUsingStaticData && Array.isArray(product.variations) && product.variations.length > 0) ? (() => {
                     // Get unique colors from variations
-                    const colorVariations = product.variations.filter((v: any) => 
+                    const colorVariations = product.variations.filter((v: any) =>
                       v.variation_type === 'color'
                     );
                     
                     // Remove duplicates
-                    const uniqueColors = colorVariations.filter((v: any, index: number, self: any[]) => 
+                    const uniqueColors = colorVariations.filter((v: any, index: number, self: any[]) =>
                       self.findIndex(t => t.variation_value === v.variation_value) === index
                     );
 
                     if (uniqueColors.length === 0) return null;
 
+                    // Get color images from product images
+                    const colorImages = getProductImages(product);
+
                     return (
-                      <div className="space-y-4">
-                        <h3 className="text-lg font-semibold text-gray-900">Color Selection</h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      <div className="space-y-3">
+                        <h3 className="text-base font-semibold text-gray-900">Select Color</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                           {uniqueColors.map((colorVariation: any) => {
                             const colorName = colorVariation.variation_value;
                             const isSelected = selectedColor === colorName;
                             const inStock = colorVariation.stock_quantity > 0;
                             
-                            // Generate color CSS class from color name
-                            const getColorBg = (colorName: string) => {
-                              const colorMap: { [key: string]: string } = {
-                                'Royal': 'bg-blue-600',
-                                'Navy': 'bg-blue-900',
-                                'Black': 'bg-black',
-                                'White': 'bg-gray-100 border border-gray-300',
-                                'Gray': 'bg-gray-500',
-                                'Teal': 'bg-teal-600',
-                                'Purple': 'bg-purple-600',
-                                'Green': 'bg-green-600',
-                                'Red': 'bg-red-600',
-                                'Pink': 'bg-pink-600',
-                                'Blue': 'bg-blue-500',
-                                'Yellow': 'bg-yellow-500',
-                                'Orange': 'bg-orange-500'
-                              };
-                              return colorMap[colorName] || 'bg-gray-300';
-                            };
+                            // Find matching image for this color
+                            const colorImage = colorImages.find(img => img.color === colorName);
 
                             return (
                               <button
                                 key={colorVariation.id}
                                 onClick={() => setSelectedColor(colorName)}
                                 disabled={!inStock}
-                                className={`p-3 rounded-lg border-2 transition-all ${
+                                className={`group relative rounded-xl border-3 transition-all overflow-hidden ${
                                   isSelected
-                                    ? 'border-blue-600 ring-2 ring-blue-600 ring-opacity-50'
-                                    : 'border-gray-200 hover:border-gray-300'
+                                    ? 'border-[#173a6a] ring-4 ring-[#173a6a] ring-opacity-30 shadow-xl scale-105'
+                                    : 'border-gray-200 hover:border-gray-400 hover:shadow-lg'
                                 } ${!inStock ? 'opacity-50 cursor-not-allowed' : ''}`}
                               >
-                                <div className={`w-full h-12 ${getColorBg(colorName)} rounded mb-2`}></div>
-                                <div className="text-center">
-                                  <p className="font-medium text-gray-900 text-sm">{colorName}</p>
-                                  <p className={`text-xs ${
+                                {/* Product Image */}
+                                <div className="aspect-square bg-gray-100 overflow-hidden">
+                                  {colorImage && (
+                                    <Image
+                                      src={colorImage.src}
+                                      alt={`${colorName} option`}
+                                      width={150}
+                                      height={150}
+                                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                    />
+                                  )}
+                                </div>
+                                
+                                {/* Color Info */}
+                                <div className="p-3 bg-white">
+                                  <p className="font-bold text-gray-900 text-center">{colorName}</p>
+                                  <p className={`text-sm text-center mt-1 ${
                                     inStock ? 'text-green-600' : 'text-red-600'
                                   }`}>
-                                    {inStock ? 'In Stock' : 'Out of Stock'}
+                                    {inStock ? '✓ In Stock' : '✗ Out of Stock'}
                                   </p>
                                 </div>
+                                
+                                {/* Selected Indicator */}
+                                {isSelected && (
+                                  <div className="absolute top-2 right-2 bg-[#173a6a] text-white rounded-full p-1.5">
+                                    <Check className="h-5 w-5" />
+                                  </div>
+                                )}
                               </button>
                             );
                           })}
@@ -693,46 +704,51 @@ export default function ProductDetailPage() {
                     );
                   })() : (isUsingStaticData && (product as Product).colorOptions) ? (
                     <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-900">Color Selection</h3>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      <h3 className="text-xl font-bold text-gray-900">Select Color</h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         {(product as Product).colorOptions.split(',').map((color: string) => {
                           const colorName = color.trim();
                           const isSelected = selectedColor === colorName;
                           
-                          const getColorBg = (colorName: string) => {
-                            const colorMap: { [key: string]: string } = {
-                              'Royal': 'bg-blue-600',
-                              'Navy': 'bg-blue-900',
-                              'Black': 'bg-black',
-                              'White': 'bg-gray-100 border border-gray-300',
-                              'Gray': 'bg-gray-500',
-                              'Teal': 'bg-teal-600',
-                              'Purple': 'bg-purple-600',
-                              'Green': 'bg-green-600',
-                              'Red': 'bg-red-600',
-                              'Pink': 'bg-pink-600',
-                              'Blue': 'bg-blue-500',
-                              'Yellow': 'bg-yellow-500',
-                              'Orange': 'bg-orange-500'
-                            };
-                            return colorMap[colorName] || 'bg-gray-300';
-                          };
+                          // Get image for this color
+                          const colorImages = getProductImages(product);
+                          const colorImage = colorImages.find(img => img.color === colorName);
 
                           return (
                             <button
                               key={colorName}
                               onClick={() => setSelectedColor(colorName)}
-                              className={`p-3 rounded-lg border-2 transition-all ${
+                              className={`group relative rounded-xl border-3 transition-all overflow-hidden ${
                                 isSelected
-                                  ? 'border-blue-600 ring-2 ring-blue-600 ring-opacity-50'
-                                  : 'border-gray-200 hover:border-gray-300'
+                                  ? 'border-[#173a6a] ring-4 ring-[#173a6a] ring-opacity-30 shadow-xl scale-105'
+                                  : 'border-gray-200 hover:border-gray-400 hover:shadow-lg'
                               }`}
                             >
-                              <div className={`w-full h-12 ${getColorBg(colorName)} rounded mb-2`}></div>
-                              <div className="text-center">
-                                <p className="font-medium text-gray-900 text-sm">{colorName}</p>
-                                <p className="text-xs text-green-600">In Stock</p>
+                              {/* Product Image */}
+                              <div className="aspect-square bg-gray-100 overflow-hidden">
+                                {colorImage && (
+                                  <Image
+                                    src={colorImage.src}
+                                    alt={`${colorName} option`}
+                                    width={150}
+                                    height={150}
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                  />
+                                )}
                               </div>
+                              
+                              {/* Color Info */}
+                              <div className="p-3 bg-white">
+                                <p className="font-bold text-gray-900 text-center">{colorName}</p>
+                                <p className="text-sm text-green-600 text-center mt-1">✓ In Stock</p>
+                              </div>
+                              
+                              {/* Selected Indicator */}
+                              {isSelected && (
+                                <div className="absolute top-2 right-2 bg-[#173a6a] text-white rounded-full p-1.5">
+                                  <Check className="h-5 w-5" />
+                                </div>
+                              )}
                             </button>
                           );
                         })}
@@ -756,7 +772,20 @@ export default function ProductDetailPage() {
 
                     return (
                       <div className="space-y-4">
-                        <h3 className="text-lg font-semibold text-gray-900">Size Selection</h3>
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-semibold text-gray-900">Size Selection</h3>
+                          {(product as any).size_chart_image && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSizeChartOpen(true)}
+                              className="text-[#173a6a] hover:bg-blue-50"
+                            >
+                              <Ruler className="h-4 w-4 mr-2" />
+                              Size Chart
+                            </Button>
+                          )}
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           {uniqueSizes.map((sizeVariation: any) => {
                             const sizeName = sizeVariation.variation_value;
@@ -787,7 +816,18 @@ export default function ProductDetailPage() {
                     );
                   })() : (isUsingStaticData && (product as Product).sizeOptions) ? (
                     <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-900">Size Selection</h3>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-gray-900">Size Selection</h3>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSizeChartOpen(true)}
+                          className="text-[#173a6a] hover:bg-blue-50"
+                        >
+                          <Ruler className="h-4 w-4 mr-2" />
+                          Size Chart
+                        </Button>
+                      </div>
                       <div className="flex flex-wrap gap-2">
                         {(product as Product).sizeOptions.split(',').map((size: string) => {
                           const sizeName = size.trim();
@@ -871,6 +911,58 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
+              {/* Multi-Variant Selector */}
+              {!isUsingStaticData && Array.isArray(product.variations) && product.variations.length > 0 && (() => {
+                const colorVariations = product.variations.filter((v: any) => v.variation_type === 'color');
+                const sizeVariations = product.variations.filter((v: any) => v.variation_type === 'size');
+                
+                const uniqueColors = colorVariations.filter((v: any, index: number, self: any[]) =>
+                  self.findIndex(t => t.variation_value === v.variation_value) === index
+                ).map((v: any) => ({
+                  id: v.id,
+                  name: v.variation_value,
+                  inStock: v.stock_quantity > 0,
+                  stockQuantity: v.stock_quantity
+                }));
+
+                const uniqueSizes = sizeVariations.filter((v: any, index: number, self: any[]) =>
+                  self.findIndex(t => t.variation_value === v.variation_value) === index
+                ).map((v: any) => ({
+                  id: v.id,
+                  name: v.variation_value,
+                  inStock: v.stock_quantity > 0,
+                  stockQuantity: v.stock_quantity,
+                  priceModifier: v.price_modifier || 0
+                }));
+
+                if (uniqueColors.length > 0 && uniqueSizes.length > 0) {
+                  return (
+                    <div className="my-6">
+                      <MultiVariantSelector
+                        colors={uniqueColors}
+                        sizes={uniqueSizes}
+                        onAddToCart={(variants) => {
+                          // Add each variant combination to cart
+                          variants.forEach(variant => {
+                            const variantProduct = {
+                              ...product,
+                              selectedColor: variant.color,
+                              selectedSize: variant.size
+                            };
+                            // You can customize the addToCart logic here
+                            console.log('Adding to cart:', variant);
+                          });
+                          setAddedToCart(true);
+                          setTimeout(() => setAddedToCart(false), 3000);
+                        }}
+                        minOrderQuantity={(product as any).min_order_quantity || 1}
+                      />
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               {/* Add to Cart Button */}
               <div className="space-y-3">
                 {(() => {
@@ -908,6 +1000,36 @@ export default function ProductDetailPage() {
                   </button>
                 </Link>
               </div>
+
+              {/* Size Chart Image Display */}
+              {(product as any).size_chart_image && (
+                <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                      <Ruler className="h-4 w-4" />
+                      Size Guide
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSizeChartOpen(true)}
+                      className="text-xs text-[#173a6a] hover:bg-blue-50"
+                    >
+                      View Full Chart
+                    </Button>
+                  </div>
+                  <div className="relative w-full bg-gray-50 rounded-md overflow-hidden">
+                    <Image
+                      src={(product as any).size_chart_image}
+                      alt={`Size chart for ${product.name}`}
+                      width={600}
+                      height={400}
+                      className="w-full h-auto"
+                      style={{ objectFit: 'contain' }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Currency Converter */}
               <CurrencyConverter
@@ -968,6 +1090,14 @@ export default function ProductDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Size Chart Modal */}
+          <SizeChartModal
+            open={sizeChartOpen}
+            onOpenChange={setSizeChartOpen}
+            sizeChartImage={(product as any).size_chart_image}
+            productName={product.name}
+          />
 
           {/* Related Products Section */}
           <div className="mt-16">

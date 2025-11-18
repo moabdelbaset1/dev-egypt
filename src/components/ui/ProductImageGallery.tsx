@@ -242,50 +242,9 @@ export const ProductImageGallery: React.FC<ProductImageGalleryProps> = ({
   }
 
   return (
-    <div className={`flex gap-4 ${className}`}>
-      {/* Left Side - Thumbnail Gallery */}
-      {showThumbnails && displayImages.length > 0 && (
-        <div className="flex flex-col gap-2 w-20">
-          {displayImages.slice(0, maxThumbnails).map((thumbnail, index) => (
-            <button
-              key={`thumb-${index}`}
-              onClick={() => handleThumbnailClick(index)}
-              className={`relative bg-neutral-light rounded-lg overflow-hidden border-2 transition-all ${
-                index === imageState.currentIndex
-                  ? 'border-primary ring-2 ring-primary ring-opacity-50'
-                  : 'border-transparent hover:border-gray-300'
-              }`}
-              aria-label={`View ${thumbnail.alt}`}
-            >
-              <div className="aspect-square">
-                <LazyImage
-                  src={thumbnail.src}
-                  alt={thumbnail.alt}
-                  width={80}
-                  height={80}
-                  className="w-full h-full object-cover"
-                  priority={priority && index < 4}
-                  sizes="80px"
-                />
-              </div>
-              {/* Label for main/back views */}
-              {index === 0 && (
-                <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[10px] p-0.5 text-center">
-                  Main
-                </div>
-              )}
-              {index === 1 && currentColorImages.back && (
-                <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[10px] p-0.5 text-center">
-                  Back
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Right Side - Main Image Display */}
-      <div className="flex-1 space-y-4">
+    <div className={`${className}`}>
+      {/* Main Image Display - Full Width */}
+      <div className="w-full space-y-4">
         <div className="relative bg-neutral-light rounded-lg overflow-hidden group">
           <div className="aspect-[3/4] relative">
             {imageState.isLoading && (
@@ -306,13 +265,13 @@ export const ProductImageGallery: React.FC<ProductImageGalleryProps> = ({
                 key={`main-image-${imageState.currentIndex}-${getImageProps(currentImage).src}`}
                 src={getImageProps(currentImage).src}
                 alt={getImageProps(currentImage).alt}
-                width={454}
-                height={678}
+                width={600}
+                height={800}
                 priority={priority}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
                 onLoad={handleImageLoad}
                 onError={handleImageError}
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 454px"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 600px"
               />
             ) : null}
 
@@ -361,52 +320,21 @@ export const ProductImageGallery: React.FC<ProductImageGalleryProps> = ({
           </div>
         </div>
 
-        {/* Color Selection */}
-        {onColorChange && uniqueColors.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">Select Color:</p>
-            <div className="flex flex-wrap gap-2">
-              {uniqueColors.map((color) => {
-                const colorImage = colorVariations[color]?.main;
-                return (
-                  <button
-                    key={color}
-                    onClick={() => onColorChange(color)}
-                    className={`relative w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${
-                      selectedColor === color
-                        ? 'border-primary ring-2 ring-primary ring-opacity-50 scale-110'
-                        : 'border-gray-300 hover:border-primary'
-                    }`}
-                    aria-label={`Select ${color} color`}
-                    aria-pressed={selectedColor === color}
-                    title={color}
-                  >
-                    {colorImage && (
-                      <LazyImage
-                        src={colorImage.src}
-                        alt={`${color} color option`}
-                        width={48}
-                        height={48}
-                        className="w-full h-full object-cover"
-                        sizes="48px"
-                      />
-                    )}
-                    {selectedColor === color && (
-                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                        <svg className="w-5 h-5 text-white drop-shadow" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {selectedColor && (
-              <p className="text-xs text-gray-600">
-                Selected: <span className="font-medium capitalize">{selectedColor}</span>
-              </p>
-            )}
+        {/* Navigation Dots - Below Image */}
+        {displayImages.length > 1 && !imageState.hasError && (
+          <div className="flex justify-center items-center gap-2 py-4">
+            {displayImages.map((_, index) => (
+              <button
+                key={`dot-${index}`}
+                onClick={() => handleThumbnailClick(index)}
+                className={`transition-all rounded-full ${
+                  index === imageState.currentIndex
+                    ? 'w-3 h-3 bg-[#173a6a]'
+                    : 'w-2 h-2 bg-gray-300 hover:bg-gray-400'
+                }`}
+                aria-label={`View image ${index + 1}`}
+              />
+            ))}
           </div>
         )}
       </div>
