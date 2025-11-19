@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import BreadCrumb from '../../../components/ui/BreadCrumb';
 import EditText from '../../../components/ui/EditText';
@@ -13,7 +13,7 @@ interface FormData {
   confirmPassword: string;
 }
 
-export default function RegisterPage() {
+function RegisterPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { register, auth } = useAuth();
@@ -211,4 +211,12 @@ export default function RegisterPage() {
     </div>
     </MainLayout>
   );
+}
+
+export default function RegisterPage() {
+ return (
+   <Suspense fallback={<div>Loading...</div>}>
+     <RegisterPageContent />
+   </Suspense>
+ );
 }

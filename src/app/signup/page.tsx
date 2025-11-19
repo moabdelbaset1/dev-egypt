@@ -1,6 +1,7 @@
 'use client';
+export const dynamic = "force-dynamic";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ import { Eye, EyeOff, UserPlus, AlertCircle, Loader2, Mail, Phone, MapPin, User,
 import Link from 'next/link';
 import MainLayout from '@/components/MainLayout';
 
-export default function SignupPage() {
+function SignupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { auth } = useAuth();
@@ -336,5 +337,13 @@ export default function SignupPage() {
         </Card>
       </div>
     </MainLayout>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SignupPageContent />
+    </Suspense>
   );
 }

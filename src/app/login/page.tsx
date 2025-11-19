@@ -1,6 +1,6 @@
 'use client';
-
-import { useState, useEffect } from 'react';
+export const dynamic = "force-dynamic";
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -13,9 +13,8 @@ import { Eye, EyeOff, LogIn, AlertCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import MainLayout from '@/components/MainLayout';
 
-export default function LoginPage() {
+function LoginForm({ redirectTo }: { redirectTo: string }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { login, auth } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -25,9 +24,6 @@ export default function LoginPage() {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-
-  // Get redirect URL from search params
-  const redirectTo = searchParams.get('redirect') || '/';
 
   // Redirect after login, check if admin
   useEffect(() => {
@@ -263,4 +259,18 @@ export default function LoginPage() {
       </div>
     </MainLayout>
   );
+}
+
+function LoginPageWithParams() {
+ const searchParams = useSearchParams();
+ const redirectTo = searchParams.get('redirect') || '/';
+ return <LoginForm redirectTo={redirectTo} />;
+}
+
+export default function LoginPage() {
+ return (
+   <Suspense fallback={<div>Loading...</div>}>
+     <LoginPageWithParams />
+   </Suspense>
+ );
 }

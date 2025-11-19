@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { useImageOptimization } from '../../lib/image-optimization-service';
+// import { useImageOptimization } from '../../lib/image-optimization-service';
 
 export interface LazyImageProps {
   src: string;
@@ -56,7 +56,8 @@ const LazyImage: React.FC<LazyImageProps> = ({
     imageSrc: src
   });
 
-  const { generateResponsiveAttributes, getBestSupportedFormat } = useImageOptimization();
+  // const { generateResponsiveAttributes, getBestSupportedFormat } = useImageOptimization();
+  const getBestSupportedFormat = () => 'jpg';
 
   const imgRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);

@@ -1,6 +1,7 @@
 'use client';
+export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import MainLayout from '../../components/MainLayout';
@@ -31,7 +32,7 @@ interface SearchFilters {
   inStock: boolean;
 }
 
-export default function SearchPage() {
+function SearchPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
@@ -864,4 +865,12 @@ export default function SearchPage() {
       )}
     </MainLayout>
   );
+}
+
+export default function SearchPage() {
+ return (
+   <Suspense fallback={<div>Loading...</div>}>
+     <SearchPageContent />
+   </Suspense>
+ );
 }

@@ -45,6 +45,13 @@ export async function GET(request: NextRequest) {
       
       // Use custom session cookie
       const session = adminSession || regularSession
+      if (!session) {
+        console.log('❌ Check-admin: Session is unexpectedly undefined')
+        return NextResponse.json(
+          { isAdmin: false, error: "No session found" },
+          { status: 401 }
+        )
+      }
       let sessionData
       try {
         sessionData = JSON.parse(session.value || '{}')

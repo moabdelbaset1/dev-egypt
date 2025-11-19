@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import MainLayout from '../../components/MainLayout';
@@ -32,7 +32,7 @@ interface Filters {
   showOnSale: boolean;
 }
 
-export default function CatalogPage() {
+function CatalogPageContent() {
   const searchParams = useSearchParams();
   const { addToCart, isInCart } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
@@ -41,7 +41,7 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'price-low' | 'price-high' | 'newest'>('name');
-  
+
   // Filter states
   const [filters, setFilters] = useState<Filters>({
     categories: [],
@@ -52,7 +52,7 @@ export default function CatalogPage() {
     showNew: false,
     showOnSale: false
   });
-  
+
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
   const [maxPrice, setMaxPrice] = useState(1000);
 
@@ -573,26 +573,26 @@ export default function CatalogPage() {
 
   return (
     <MainLayout>
-      {loading ? (
-        <LoadingSkeleton />
-      ) : (
-        <div className="min-h-screen bg-gray-50">
-          <div className="max-w-[1920px] mx-auto px-[50px] py-8">
-            <div className="flex gap-8">
-              {/* Mobile Filter Toggle */}
-              <div className="lg:hidden fixed top-20 right-4 z-50">
-                <button
-                  onClick={() => setSidebarOpen(!sidebarOpen)}
-                  className="bg-[#173a6a] text-white p-3 rounded-full shadow-lg hover:bg-[#1e4a7a] transition-colors"
-                >
-                  <Filter className="h-5 w-5" />
-                  {activeFiltersCount > 0 && (
-                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                      {activeFiltersCount}
-                    </span>
-                  )}
-                </button>
-              </div>
+        {loading ? (
+          <LoadingSkeleton />
+        ) : (
+          <div className="min-h-screen bg-gray-50">
+            <div className="max-w-[1920px] mx-auto px-[50px] py-8">
+              <div className="flex gap-8">
+                {/* Mobile Filter Toggle */}
+                <div className="lg:hidden fixed top-20 right-4 z-50">
+                  <button
+                    onClick={() => setSidebarOpen(!sidebarOpen)}
+                    className="bg-[#173a6a] text-white p-3 rounded-full shadow-lg hover:bg-[#1e4a7a] transition-colors"
+                  >
+                    <Filter className="h-5 w-5" />
+                    {activeFiltersCount > 0 && (
+                      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                        {activeFiltersCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
 
               {/* Sidebar */}
               <div className={`w-80 flex-shrink-0 ${sidebarOpen ? 'fixed inset-y-0 left-0 z-40 lg:relative lg:inset-auto' : 'hidden lg:block'}`}>
@@ -1163,3 +1163,11 @@ export default function CatalogPage() {
     </MainLayout>
   );
 }
+export default function CatalogPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="text-lg">Loading catalog...</div></div>}>
+      <CatalogPageContent />
+    </Suspense>
+  );
+}
+
